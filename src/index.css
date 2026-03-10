@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-market-green: #00c853;
+  --color-market-green-hover: #00e676;
+  --color-market-green-muted: rgba(0, 200, 83, 0.1);
+  
+  --color-market-red: #ff3d00;
+  --color-market-red-hover: #ff6e40;
+  --color-market-red-muted: rgba(255, 61, 0, 0.1);
+  
+  --color-market-bg: #0b0e11;
+  --color-market-card: #15191e;
+  --color-market-card-lighter: #1c2128;
+  --color-market-border: #21262d;
+  --color-market-text-main: #f0f6fc;
+  --color-market-text-muted: #8b949e;
+}
+
+@layer base {
+  body {
+    @apply bg-market-bg text-market-text-main font-sans antialiased;
+  }
+  
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-market-border rounded-full hover:bg-market-text-muted/30 transition-colors;
+  }
+}
+
+@layer components {
+  .market-card {
+    @apply bg-market-card border border-market-border rounded-xl overflow-hidden transition-all duration-200;
+  }
+  
+  .market-button-primary {
+    @apply bg-market-green text-white px-4 py-2 rounded-lg font-bold hover:bg-market-green-hover transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .market-button-red {
+    @apply bg-market-red text-white px-4 py-2 rounded-lg font-bold hover:bg-market-red-hover transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .market-button-outline {
+    @apply border border-market-border text-market-text-muted px-4 py-2 rounded-lg font-bold hover:bg-market-card-lighter hover:text-market-text-main transition-all active:scale-[0.98];
+  }
+
+  .market-button-ghost {
+    @apply text-market-text-muted px-3 py-1.5 rounded-lg font-medium hover:bg-market-card-lighter hover:text-market-text-main transition-all;
+  }
+  
+  .market-input {
+    @apply w-full bg-market-bg border border-market-border rounded-xl py-3 px-4 font-bold text-market-text-main outline-none focus:border-market-green transition-all;
+  }
+
+  .market-tab-list {
+    @apply flex bg-market-bg p-1 rounded-xl border border-market-border;
+  }
+
+  .market-tab-trigger {
+    @apply flex-1 py-2 text-sm font-bold rounded-lg transition-all;
+  }
+
+  .market-tab-trigger-active {
+    @apply bg-market-card-lighter text-white shadow-sm;
+  }
+
+  .market-tab-trigger-inactive {
+    @apply text-market-text-muted hover:text-market-text-main;
+  }
+
+  .market-badge {
+    @apply px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider;
+  }
+
+  .market-nav-item {
+    @apply flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-market-text-muted hover:text-market-text-main hover:bg-market-card-lighter transition-all;
+  }
+
+  .market-nav-item-active {
+    @apply text-market-green bg-market-green-muted;
+  }
+}
