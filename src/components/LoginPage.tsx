@@ -1,48 +1,151 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 import { LogIn, Mail } from 'lucide-react';
+import { supabase } from '../supabase';
 
 export const LoginPage = ({ onLogin }: { onLogin: (user: User) => void }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [resetEmailSent, setResetEmailSent] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Check if Supabase is properly initialized
+  const isSupabaseConfigured = !!supabase;
+
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isSupabaseConfigured) {
+      setError('Erro de configuração: O cliente Supabase não foi inicializado corretamente.');
+      return;
+    }
     setError('');
+    setLoading(true);
 
-    if (email === 'evaristopaulocassoma00@gmail.com' && password === 'bastante12@') {
-      onLogin({
-        id: 'admin_1',
-        name: 'Evaristo Cassoma',
-        walletAddress: '0xAdminWalletAddress',
-        balance: 10000000,
-        positions: [],
-        isAdmin: true,
-      });
-    } else if (email && password) {
-      onLogin({
-        id: `user_${Date.now()}`,
-        name: email.split('@')[0],
-        walletAddress: '0xUserWalletAddress',
-        balance: 10000,
-        positions: [],
-        isAdmin: false,
-      });
-    } else {
-      setError('Por favor, preencha todos os campos.');
+    try {
+      if (isSignUp) {
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        
+        if (signUpError) {
+          if (signUpError.message.includes('Email confirmation')) {
+            setError('Registo efetuado! Por favor, verifique o seu email para confirmar a conta antes de entrar.');
+            setLoading(false);
+            return;
+          }
+          throw signUpError;
+        }
+        
+        if (data.user) {
+          // Create user profile in 'users' table
+          const { error: profileError } = await supabase
+            .from('users')
+            .insert([{
+              id: data.user.id,
+              name: email.split('@')[0],
+              email: email,
+              balance: 1000, // Initial bonus
+              is_admin: email.toLowerCase() === 'evaristopaulocassoma00@gmail.com',
+              status: 'active'
+            }]);
+          
+          if (profileError) {
+            console.error('Profile creation error:', profileError);
+            // Even if profile creation fails here, the auth account is created.
+            // The user might need to log in to trigger the profile creation logic in handleAuth (signIn branch)
+            setError('Conta criada, mas houve um erro ao criar o perfil. Tente fazer login.');
+          } else {
+            alert('Conta criada com sucesso!');
+            setIsSignUp(false);
+          }
+        }
+      } else {
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (signInError) throw signInError;
+
+        if (data.user) {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('*, positions(*)')
+            .eq('id', data.user.id)
+            .single();
+          
+          if (userError) {
+            // If profile doesn't exist (e.g. after OAuth), create it
+            const { data: newProfile, error: createError } = await supabase
+              .from('users')
+              .insert([{
+                id: data.user.id,
+                name: data.user.email?.split('@')[0] || 'Utilizador',
+                email: data.user.email,
+                balance: 1000,
+                is_admin: data.user.email?.toLowerCase() === 'evaristopaulocassoma00@gmail.com',
+                status: 'active'
+              }])
+              .select('*, positions(*)')
+              .single();
+            
+            if (createError) throw createError;
+            onLogin(newProfile);
+          } else {
+            onLogin(userData);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error('Auth error:', err);
+      if (err.message === 'Invalid login credentials') {
+        setError('Email ou senha incorretos.');
+      } else if (err.message.includes('Email not confirmed')) {
+        setError('Por favor, confirme o seu email antes de entrar.');
+      } else if (err.message.includes('Database error saving new user')) {
+        setError('Erro ao guardar perfil. Verifique se executou o script SQL no Supabase.');
+      } else {
+        setError(err.message || 'Ocorreu um erro na autenticação.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleGoogleLogin = () => {
-    onLogin({
-      id: 'user_1',
-      name: 'João Silva',
-      walletAddress: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
-      balance: 1250000,
-      positions: [],
-      isAdmin: false,
-    });
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError('Por favor, insira o seu email primeiro.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      setResetEmailSent(true);
+      alert('Email de recuperação enviado! Verifique a sua caixa de entrada.');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   return (
@@ -52,11 +155,15 @@ export const LoginPage = ({ onLogin }: { onLogin: (user: User) => void }) => {
           <div className="w-16 h-16 bg-market-green rounded-2xl flex items-center justify-center text-market-bg font-bold text-3xl mx-auto mb-6">
             MP
           </div>
-          <h1 className="text-2xl font-bold text-white">Bem-vindo ao MarketPay</h1>
-          <p className="text-sm text-market-text-muted">Inicie sessão para começar a negociar</p>
+          <h1 className="text-2xl font-bold text-white">
+            {isSignUp ? 'Criar Conta' : 'Bem-vindo ao MarketPay'}
+          </h1>
+          <p className="text-sm text-market-text-muted">
+            {isSignUp ? 'Registe-se para começar a negociar' : 'Inicie sessão para começar a negociar'}
+          </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleAuth} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-market-text-muted uppercase tracking-widest mb-2">Email</label>
             <input 
@@ -65,24 +172,54 @@ export const LoginPage = ({ onLogin }: { onLogin: (user: User) => void }) => {
               onChange={(e) => setEmail(e.target.value)}
               className="market-input w-full"
               placeholder="seu@email.com"
+              required
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-market-text-muted uppercase tracking-widest mb-2">Password</label>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-xs font-bold text-market-text-muted uppercase tracking-widest">Password</label>
+              {!isSignUp && (
+                <button 
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="text-[10px] text-market-green hover:underline font-bold uppercase tracking-widest"
+                >
+                  Esqueceu a senha?
+                </button>
+              )}
+            </div>
             <input 
               type="password" 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="market-input w-full"
               placeholder="••••••••"
+              required
             />
           </div>
           {error && <p className="text-market-red text-xs font-bold">{error}</p>}
-          <button type="submit" className="w-full market-button-primary py-3 flex items-center justify-center gap-3">
-            <Mail className="w-4 h-4" />
-            Entrar com Email
+          {isSignUp && (
+            <p className="text-[10px] text-market-text-muted italic">
+              Nota: Pode ser necessário confirmar o seu email antes de conseguir entrar.
+            </p>
+          )}
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full market-button-primary py-3 flex items-center justify-center gap-3 disabled:opacity-50"
+          >
+            {loading ? 'A processar...' : (isSignUp ? 'Registar' : 'Entrar com Email')}
           </button>
         </form>
+
+        <div className="text-center">
+          <button 
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-xs text-market-green hover:underline font-bold uppercase tracking-widest"
+          >
+            {isSignUp ? 'Já tem conta? Entre aqui' : 'Não tem conta? Registe-se'}
+          </button>
+        </div>
 
         <div className="space-y-4">
           <div className="relative">

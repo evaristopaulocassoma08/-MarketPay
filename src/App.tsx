@@ -11,6 +11,7 @@ import {
   ArrowDownRight,
   Menu,
   X,
+  Loader2,
   LayoutGrid,
   History,
   User as UserIcon,
@@ -31,7 +32,23 @@ import {
   Share2,
   Bookmark,
   MessageSquare,
-  ArrowRight
+  ArrowRight,
+  Newspaper,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Percent,
+  Lock,
+  Unlock,
+  Plus,
+  Edit,
+  Trash2,
+  LineChart as LineChartIcon,
+  PieChart as PieChartIcon,
+  ChevronDown,
+  Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -48,12 +65,15 @@ import {
 import { format, formatDistanceToNow } from 'date-fns';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { Market, Trade, User, Position, Outcome } from './types';
+import { Market, Trade, User, Position, Outcome, Comment, PriceHistory } from './types';
 import { CATEGORIES, MOCK_MARKETS } from './constants';
 
+import { supabase } from './supabase';
 import { UserProfile } from './components/UserProfile';
 import { AdminDashboard } from './components/AdminDashboard';
 import { LoginPage } from './components/LoginPage';
+import { CountdownTimer } from './components/CountdownTimer';
+import { Category } from './types';
 
 /**
  * Utility for Tailwind class merging
@@ -64,7 +84,108 @@ function cn(...inputs: ClassValue[]) {
 
 // --- Components ---
 
-const Navbar = ({ user, onConnect, search, onSearchChange }: { user: User | null, onConnect: () => void, search: string, onSearchChange: (val: string) => void }) => {
+const SearchModal = ({ isOpen, onClose, onSearch, categories }: { isOpen: boolean, onClose: () => void, onSearch: (val: string) => void, categories: Category[] }) => {
+  const [query, setQuery] = useState('');
+  const navigate = useNavigate();
+
+  if (!isOpen) return null;
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSearch(query);
+    onClose();
+  };
+
+  const topics = [
+    { name: 'Criptomoedas ao vivo', icon: Activity },
+    { name: 'Política', icon: Vote },
+    { name: 'Médio Oriente', icon: Globe },
+    { name: 'Criptomoedas', icon: Coins },
+    { name: 'Desporto', icon: Trophy },
+    { name: 'Cultura Pop', icon: Music },
+    { name: 'Tecnologia', icon: Cpu },
+    { name: 'IA', icon: Zap },
+  ];
+
+  const navigations = [
+    { name: 'Novo', icon: Star },
+    { name: 'Tendências', icon: TrendingUp },
+    { name: 'Popular', icon: Flame },
+    { name: 'Líquido', icon: Activity },
+    { name: 'Termina em breve', icon: Clock },
+    { name: 'Competitivo', icon: Trophy },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-20 px-4">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-market-bg/90 backdrop-blur-sm"
+      />
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative w-full max-w-2xl bg-market-card border border-market-border rounded-2xl shadow-2xl overflow-hidden"
+      >
+        <form onSubmit={handleSearch} className="p-4 border-b border-market-border flex items-center gap-4">
+          <Search className="w-5 h-5 text-market-text-muted" />
+          <input 
+            autoFocus
+            type="text" 
+            placeholder="Pesquisa polymarkets..." 
+            className="flex-1 bg-transparent border-none outline-none text-lg text-white font-medium"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <button type="button" onClick={onClose} className="p-2 hover:bg-market-card-lighter rounded-lg transition-colors">
+            <X className="w-5 h-5 text-market-text-muted" />
+          </button>
+        </form>
+
+        <div className="p-6 space-y-8 max-h-[70vh] overflow-y-auto no-scrollbar">
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-black text-market-text-muted uppercase tracking-widest">Navegar</h4>
+            <div className="flex flex-wrap gap-2">
+              {navigations.map((nav) => (
+                <button 
+                  key={nav.name}
+                  onClick={() => { onSearch(nav.name); onClose(); }}
+                  className="flex items-center gap-2 px-4 py-2 bg-market-card-lighter hover:bg-market-border rounded-xl text-sm font-bold text-white transition-all border border-market-border"
+                >
+                  <nav.icon className="w-4 h-4 text-market-green" />
+                  {nav.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-black text-market-text-muted uppercase tracking-widest">Tópicos</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {topics.map((topic) => (
+                <button 
+                  key={topic.name}
+                  onClick={() => { onSearch(topic.name); onClose(); }}
+                  className="flex items-center gap-4 p-4 bg-market-card-lighter/30 hover:bg-market-card-lighter rounded-2xl text-left transition-all border border-market-border group"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-market-card-lighter flex items-center justify-center group-hover:bg-market-green/10 transition-colors">
+                    <topic.icon className="w-5 h-5 text-market-text-muted group-hover:text-market-green" />
+                  </div>
+                  <span className="font-bold text-white">{topic.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const Navbar = ({ user, search, onSearchChange, onOpenSearch }: { user: User | null, search: string, onSearchChange: (val: string) => void, onOpenSearch: () => void }) => {
   return (
     <nav className="sticky top-0 z-50 bg-market-bg border-b border-market-border h-16 flex items-center px-4 md:px-8 gap-4 md:gap-8">
       <Link to="/" className="flex items-center gap-2 group">
@@ -75,14 +196,13 @@ const Navbar = ({ user, onConnect, search, onSearchChange }: { user: User | null
       </Link>
       
       <div className="flex-1 max-w-xl relative group mx-auto">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-market-text-muted w-4 h-4 group-focus-within:text-market-green transition-colors" />
-        <input 
-          type="text" 
-          placeholder="Pesquisar mercados..." 
-          className="w-full bg-market-card border border-market-border rounded-lg py-2 pl-10 pr-4 focus:border-market-green transition-all outline-none text-sm text-white"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-        />
+        <div 
+          onClick={onOpenSearch}
+          className="w-full bg-market-card border border-market-border rounded-lg py-2 pl-10 pr-4 cursor-pointer hover:border-market-green transition-all flex items-center text-market-text-muted text-sm"
+        >
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" />
+          {search || 'Pesquisar mercados...'}
+        </div>
       </div>
       
       <div className="flex items-center gap-4">
@@ -90,19 +210,19 @@ const Navbar = ({ user, onConnect, search, onSearchChange }: { user: User | null
           {!user && (
             <Link to="/login" className="text-market-text-muted hover:text-white transition-colors font-bold uppercase tracking-widest text-[10px]">Entrar / Criar Conta</Link>
           )}
-          {user && user.isAdmin && (
+          {user && user.is_admin && (
             <Link to="/admin" className="text-market-text-muted hover:text-market-green transition-colors font-bold uppercase tracking-widest text-[10px]">Admin</Link>
           )}
         </div>
         
         {!user ? (
-          <button 
-            onClick={onConnect}
+          <Link 
+            to="/login"
             className="market-button-primary flex items-center gap-2 text-sm"
           >
-            <Wallet className="w-4 h-4" />
-            Carteira
-          </button>
+            <UserIcon className="w-4 h-4" />
+            Entrar
+          </Link>
         ) : (
           <Link to="/profile" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div className="text-right hidden md:block">
@@ -161,66 +281,128 @@ const SubNavbar = ({ activeCategory, onCategoryChange }: { activeCategory: strin
 
 const MarketCard: React.FC<{ market: Market }> = ({ market }) => {
   return (
-    <Link to={`/market/${market.id}`} className="market-card group relative hover:border-market-green/30 transition-all">
+    <Link to={`/market/${market.id}`} className="market-card group relative hover:border-market-green/30 transition-all overflow-hidden">
       <div className="p-4 flex flex-col h-full">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex gap-2">
-            {market.resolved ? (
-              <span className="market-badge bg-market-green text-market-bg">RESOLVIDO: {market.resolutionOutcome === 'Yes' ? 'SIM' : 'NÃO'}</span>
-            ) : (
-              <span className="market-badge bg-market-green-muted text-market-green">NOVO</span>
-            )}
-            <span className="market-badge bg-market-card-lighter text-market-text-muted">{market.category}</span>
+        <div className="flex items-start gap-4 mb-4">
+          <div className="w-12 h-12 rounded-xl bg-market-card-lighter flex items-center justify-center shrink-0 overflow-hidden border border-market-border">
+            <img 
+              src={`https://picsum.photos/seed/${market.id}/100/100`} 
+              alt="" 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
           </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-sm leading-snug group-hover:text-market-green transition-colors line-clamp-2">
+              {market.question}
+            </h3>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] font-bold text-market-text-muted uppercase tracking-widest">{market.category}</span>
+              <span className="text-[10px] text-market-text-muted opacity-50">•</span>
+              <span className="text-[10px] font-bold text-market-green">{market.volume.toLocaleString()} KZ</span>
+            </div>
+          </div>
+          <Bookmark className="w-4 h-4 text-market-text-muted hover:text-white cursor-pointer shrink-0" />
         </div>
         
-        <h3 className="font-bold text-sm leading-snug mb-4 group-hover:text-market-green transition-colors line-clamp-2 min-h-[2.5rem]">
-          {market.question}
-        </h3>
-        
         <div className="mt-auto space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <button className="bg-market-green-muted border border-market-green/20 rounded-lg py-2 text-center hover:bg-market-green/20 transition-colors">
-              <div className="text-xs font-bold text-market-green">Sim 0 KZ</div>
-            </button>
-            <button className="bg-market-red-muted border border-market-red/20 rounded-lg py-2 text-center hover:bg-market-red/20 transition-colors">
-              <div className="text-xs font-bold text-market-red">Não 0 KZ</div>
-            </button>
-          </div>
-          
-          <div className="flex items-center justify-between text-[10px] text-market-text-muted font-bold uppercase tracking-wider pt-2">
-            <div className="flex items-center gap-2">
-              <span>{market.volume.toLocaleString()} KZ</span>
-              <span>•</span>
-              <span>{formatDistanceToNow(new Date(market.endDate))} left</span>
+          {market.is_multi ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-bold text-white uppercase tracking-widest px-1">
+                <span>{market.outcomes?.[0]?.name || 'Opção 1'}</span>
+                <span>{Math.round((market.outcomes?.[0]?.price || 0) * 100)}%</span>
+              </div>
+              <div className="h-1.5 w-full bg-market-card-lighter rounded-full overflow-hidden">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${(market.outcomes?.[0]?.price || 0) * 100}%` }}
+                  className="h-full bg-market-green"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {market.outcomes?.slice(0, 2).map((o, idx) => (
+                  <button key={o.id} className={cn(
+                    "rounded-lg py-2 text-center transition-all group/btn border",
+                    idx === 0 ? "bg-market-green/10 border-market-green/20" : "bg-market-card-lighter border-market-border"
+                  )}>
+                    <div className={cn(
+                      "text-[10px] font-bold group-hover/btn:scale-105 transition-transform truncate px-1",
+                      idx === 0 ? "text-market-green" : "text-market-text-muted"
+                    )}>
+                      {o.name.toUpperCase()} {Math.round(o.price * 1000)} KZ
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-            <Bookmark className="w-3 h-3 hover:text-white cursor-pointer" />
-          </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[10px] font-bold text-white uppercase tracking-widest px-1">
+                  <span>Sim</span>
+                  <span>{Math.round(market.yes_price * 100)}%</span>
+                </div>
+                <div className="h-1.5 w-full bg-market-card-lighter rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${market.yes_price * 100}%` }}
+                    className="h-full bg-market-green"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button className="bg-market-green/10 hover:bg-market-green/20 border border-market-green/20 rounded-lg py-2 text-center transition-all group/btn">
+                  <div className="text-[10px] font-bold text-market-green group-hover/btn:scale-105 transition-transform">SIM {Math.round(market.yes_price * 1000)} KZ</div>
+                </button>
+                <button className="bg-market-red/10 hover:bg-market-red/20 border border-market-red/20 rounded-lg py-2 text-center transition-all group/btn">
+                  <div className="text-[10px] font-bold text-market-red group-hover/btn:scale-105 transition-transform">NÃO {Math.round(market.no_price * 1000)} KZ</div>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </Link>
   );
-}
+};
 
-const Sidebar = ({ activeCategory, onCategoryChange }: { activeCategory: string, onCategoryChange: (cat: string) => void }) => {
+const Sidebar = ({ activeCategory, onCategoryChange, categories, markets }: { activeCategory: string, onCategoryChange: (cat: string) => void, categories: Category[], markets: Market[] }) => {
+  const filters = [
+    { name: 'Todos', icon: LayoutGrid, count: markets.length },
+    { name: 'Diariamente', icon: Clock, count: markets.filter(m => m.tags?.includes('Diariamente') || m.category === 'Diariamente').length },
+    { name: 'Semanalmente', icon: Clock, count: markets.filter(m => m.tags?.includes('Semanalmente') || m.category === 'Semanalmente').length },
+    { name: 'Mensalmente', icon: Clock, count: markets.filter(m => m.tags?.includes('Mensalmente') || m.category === 'Mensalmente').length },
+    { name: 'Existências', icon: Coins, count: markets.filter(m => m.category === 'Existências' || m.tags?.includes('Existências')).length },
+    { name: 'Rendimentos', icon: TrendingUp, count: markets.filter(m => m.category === 'Rendimentos' || m.tags?.includes('Rendimentos')).length },
+    { name: 'Índices', icon: BarChart3, count: markets.filter(m => m.category === 'Índices' || m.tags?.includes('Índices')).length },
+    { name: 'Commodities', icon: Coins, count: markets.filter(m => m.category === 'Commodities' || m.tags?.includes('Commodities')).length },
+    { name: 'Forex', icon: Globe, count: markets.filter(m => m.category === 'Forex' || m.tags?.includes('Forex')).length },
+    { name: 'Coleccionáveis', icon: Star, count: markets.filter(m => m.category === 'Coleccionáveis' || m.tags?.includes('Coleccionáveis')).length },
+    { name: 'Aquisições', icon: Landmark, count: markets.filter(m => m.category === 'Aquisições' || m.tags?.includes('Aquisições')).length },
+    { name: 'Calendário', icon: Clock, count: 0 },
+  ];
+
   return (
     <aside className="w-64 hidden xl:block shrink-0 sticky top-24 h-fit space-y-8">
       <div>
-        <h4 className="text-[10px] font-bold text-market-text-muted uppercase tracking-widest mb-4 px-2">Categorias</h4>
         <div className="space-y-1">
-          {CATEGORIES.map(cat => (
+          {filters.map((filter) => (
             <button
-              key={cat}
-              onClick={() => onCategoryChange(cat)}
+              key={filter.name}
+              onClick={() => onCategoryChange(filter.name)}
               className={cn(
-                "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold transition-all uppercase tracking-widest",
-                activeCategory === cat 
-                  ? "bg-market-green text-market-bg shadow-lg shadow-market-green/20" 
+                "w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-bold transition-all group",
+                filter.name === activeCategory
+                  ? "bg-market-card-lighter text-white"
                   : "text-market-text-muted hover:bg-market-card-lighter hover:text-white"
               )}
             >
-              <LayoutGrid className="w-4 h-4" />
-              {cat}
+              <div className="flex items-center gap-3">
+                <filter.icon className={cn("w-4 h-4", filter.name === activeCategory ? "text-market-green" : "text-market-text-muted group-hover:text-white")} />
+                {filter.name}
+              </div>
+              {filter.count > 0 && <span className="text-[10px] opacity-50">{filter.count}</span>}
             </button>
           ))}
         </div>
@@ -231,15 +413,15 @@ const Sidebar = ({ activeCategory, onCategoryChange }: { activeCategory: string,
           <TrendingUp className="w-4 h-4 text-market-green" />
           <h4 className="text-sm font-bold text-white">Tendências Agora</h4>
         </div>
-        <div className="space-y-3">
-          {MOCK_MARKETS.slice(0, 3).map(m => (
+        <div className="space-y-4">
+          {markets.slice(0, 3).map((m, i) => (
             <Link key={m.id} to={`/market/${m.id}`} className="block group">
-              <p className="text-xs font-bold text-market-text-muted group-hover:text-market-green transition-colors line-clamp-2">
-                {m.question}
-              </p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] font-bold text-market-green">{Math.round(m.yesPrice * 1000)} KZ</span>
-                <span className="text-[10px] text-market-text-muted font-bold uppercase">Vol: {(m.volume * 10).toLocaleString()} KZ</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold text-market-text-muted">{i + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-white truncate group-hover:text-market-green transition-colors">{m.question}</p>
+                  <p className="text-[10px] text-market-text-muted">{m.volume.toLocaleString()} KZ</p>
+                </div>
               </div>
             </Link>
           ))}
@@ -312,45 +494,42 @@ const ConnectWalletModal = ({ isOpen, onClose, onConnect }: { isOpen: boolean, o
   );
 };
 
-const ActivityPage = () => {
-  const activities = [
-    { id: 1, user: '0x123...456', action: 'comprou', outcome: 'Sim', amount: 500000, market: 'O Kwanza vai valorizar este mês?', time: 'há 2 mins' },
-    { id: 2, user: '0x789...012', action: 'vendeu', outcome: 'Não', amount: 1200000, market: 'Euro ultrapassa 1050 KZ?', time: 'há 5 mins' },
-    { id: 3, user: '0xabc...def', action: 'comprou', outcome: 'Sim', amount: 50000, market: 'Dólar ultrapassa 950 KZ?', time: 'há 12 mins' },
-    { id: 4, user: '0x456...789', action: 'comprou', outcome: 'Não', amount: 2500000, market: 'Real ultrapassa 160 KZ?', time: 'há 15 mins' },
-    { id: 5, user: '0xdef...123', action: 'vendeu', outcome: 'Sim', amount: 300000, market: 'O Kwanza vai valorizar este mês?', time: 'há 20 mins' },
-  ];
-
+const ActivityPage = ({ trades, markets }: { trades: any[], markets: Market[] }) => {
   return (
     <div className="max-w-4xl mx-auto space-y-8 py-12 px-4">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-white">Atividade</h1>
         <div className="market-tab-list">
           <button className="market-tab-trigger market-tab-trigger-active px-6">Global</button>
-          <button className="market-tab-trigger market-tab-trigger-inactive px-6">Minha Atividade</button>
         </div>
       </div>
 
       <div className="market-card divide-y divide-market-border">
-        {activities.map((activity) => (
-          <div key={activity.id} className="p-6 flex items-start gap-4 hover:bg-market-card-lighter transition-colors">
-            <div className={cn(
-              "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
-              activity.action === 'comprou' ? "bg-market-green/10 text-market-green" : "bg-market-red/10 text-market-red"
-            )}>
-              {activity.action === 'comprou' ? <ArrowUpRight className="w-5 h-5" /> : <ArrowDownRight className="w-5 h-5" />}
-            </div>
-            <div className="flex-1 space-y-1">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-white">
-                  <span className="font-bold text-market-green">{activity.user}</span> {activity.action} <span className={cn("font-bold", activity.outcome === 'Sim' ? "text-market-green" : "text-market-red")}>{activity.outcome}</span> por <span className="font-bold">{activity.amount.toLocaleString()} KZ</span>
-                </p>
-                <span className="text-[10px] text-market-text-muted font-bold uppercase tracking-wider">{activity.time}</span>
+        {trades.map((trade) => {
+          const market = markets.find(m => m.id === trade.market_id);
+          return (
+            <div key={trade.id} className="p-6 flex items-start gap-4 hover:bg-market-card-lighter transition-colors">
+              <div className={cn(
+                "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
+                trade.side === 'Buy' ? "bg-market-green/10 text-market-green" : "bg-market-red/10 text-market-red"
+              )}>
+                {trade.side === 'Buy' ? <ArrowUpRight className="w-5 h-5" /> : <ArrowDownRight className="w-5 h-5" />}
               </div>
-              <p className="text-sm text-market-text-muted line-clamp-1">{activity.market}</p>
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-white">
+                    <span className="font-bold text-market-green">{trade.user_id?.slice(0, 6) || 'Anónimo'}...</span> {trade.side === 'Compra' ? 'comprou' : 'vendeu'} <span className={cn("font-bold", trade.outcome === 'Sim' ? "text-market-green" : "text-market-red")}>{trade.outcome}</span> por <span className="font-bold">{trade.amount.toLocaleString()} KZ</span>
+                  </p>
+                  <span className="text-[10px] text-market-text-muted font-bold uppercase tracking-wider">{trade.time}</span>
+                </div>
+                <p className="text-sm text-market-text-muted line-clamp-1">{market?.question || 'Mercado Desconhecido'}</p>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
+        {trades.length === 0 && (
+          <div className="p-12 text-center text-market-text-muted italic">Nenhuma atividade recente.</div>
+        )}
       </div>
     </div>
   );
@@ -400,11 +579,50 @@ const LearnPage = () => {
 };
 
 const PriceTicker = () => {
+  const [rates, setRates] = useState<any>({
+    'USD/KZ': { price: 954.5, change: '+2.3%' },
+    'EUR/KZ': { price: 1032.12, change: '-0.5%' },
+    'BTC/KZ': { price: 54200000, change: '+1.2%' },
+    'ETH/KZ': { price: 2800000, change: '+0.8%' }
+  });
+
+  useEffect(() => {
+    const fetchRates = async () => {
+      try {
+        // Using public APIs for real rates
+        const [fiatRes, cryptoRes] = await Promise.all([
+          fetch('https://api.exchangerate-api.com/v4/latest/USD'),
+          fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd')
+        ]);
+        
+        const fiatData = await fiatRes.json();
+        const cryptoData = await cryptoRes.json();
+        
+        // AOA rate (Kwanza) - fallback to 950 if not available
+        const aoaRate = fiatData.rates.AOA || 950;
+        const eurRate = fiatData.rates.EUR || 0.92;
+        
+        setRates({
+          'USD/KZ': { price: aoaRate, change: '+0.1%' },
+          'EUR/KZ': { price: aoaRate / eurRate, change: '-0.2%' },
+          'BTC/KZ': { price: cryptoData.bitcoin.usd * aoaRate, change: '+1.5%' },
+          'ETH/KZ': { price: cryptoData.ethereum.usd * aoaRate, change: '+0.9%' }
+        });
+      } catch (error) {
+        console.error('Error fetching rates:', error);
+      }
+    };
+
+    fetchRates();
+    const interval = setInterval(fetchRates, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
+
   const tickers = [
-    { name: 'USD/KZ', price: '954,5', change: '+2.3%', color: 'text-market-green', link: 'https://www.google.com/finance/quote/USD-AOA' },
-    { name: 'EUR/KZ', price: '1 032,12', change: '-0.5%', color: 'text-market-red', link: 'https://www.google.com/finance/quote/EUR-AOA' },
-    { name: 'BTC/KZ', price: '54 200 000', change: '+1.2%', color: 'text-market-green', link: 'https://www.google.com/finance/quote/BTC-AOA' },
-    { name: 'ETH/KZ', price: '2 800 000', change: '+0.8%', color: 'text-market-green', link: 'https://www.google.com/finance/quote/ETH-AOA' },
+    { name: 'USD/KZ', price: rates['USD/KZ'].price.toLocaleString('pt-AO', { minimumFractionDigits: 2 }), change: rates['USD/KZ'].change, color: 'text-market-green', link: 'https://www.google.com/finance/quote/USD-AOA' },
+    { name: 'EUR/KZ', price: rates['EUR/KZ'].price.toLocaleString('pt-AO', { minimumFractionDigits: 2 }), change: rates['EUR/KZ'].change, color: 'text-market-red', link: 'https://www.google.com/finance/quote/EUR-AOA' },
+    { name: 'BTC/KZ', price: rates['BTC/KZ'].price.toLocaleString('pt-AO', { maximumFractionDigits: 0 }), change: rates['BTC/KZ'].change, color: 'text-market-green', link: 'https://www.google.com/finance/quote/BTC-AOA' },
+    { name: 'ETH/KZ', price: rates['ETH/KZ'].price.toLocaleString('pt-AO', { maximumFractionDigits: 0 }), change: rates['ETH/KZ'].change, color: 'text-market-green', link: 'https://www.google.com/finance/quote/ETH-AOA' },
   ];
 
   return (
@@ -442,18 +660,35 @@ const PriceTicker = () => {
   );
 };
 
-const HomePage = ({ markets, search }: { markets: Market[], search: string }) => {
-  const [activeCategory, setActiveCategory] = useState('Todos');
+const HomePage = ({ markets, search, activeCategory, onCategoryChange, categories, posts, trades, onSearchChange }: { markets: Market[], search: string, activeCategory: string, onCategoryChange: (cat: string) => void, categories: Category[], posts: any[], trades: any[], onSearchChange: (val: string) => void }) => {
+  const subTabs = [
+    'Trending', 'Breaking', 'Novo', 'Angola', 'Política', 'Economia', 'Petróleo', 'Crypto', 'Desporto', 'Finanças', 'Geopolítica', 'Tech', 'Cultura', 'Clima', 'Eleições'
+  ];
   
   const filteredMarkets = useMemo(() => {
-    let result = markets;
-    if (activeCategory !== 'Todos') {
-      result = result.filter(m => m.category === activeCategory);
+    let result = [...(markets || [])];
+    
+    if (activeCategory === 'Trending') {
+      result = result.sort((a, b) => b.volume - a.volume);
+    } else if (activeCategory === 'Novo') {
+      result = result.sort((a, b) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime());
+    } else if (activeCategory === 'Breaking') {
+      result = result.filter(m => m.tags?.includes('Breaking') || m.volume > 5000).sort((a, b) => b.volume - a.volume);
+    } else if (activeCategory === 'Angola') {
+      result = result.filter(m => m.tags?.includes('Angola') || m.category === 'Angola' || m.tags?.includes('Angola'));
+    } else if (activeCategory === 'Diariamente' || activeCategory === 'Semanalmente' || activeCategory === 'Mensalmente') {
+      result = result.filter(m => m.tags?.includes(activeCategory) || m.category === activeCategory);
+    } else if (activeCategory !== 'Todos') {
+      result = result.filter(m => m.category === activeCategory || m.tags?.includes(activeCategory));
     }
+    
     if (search) {
+      const searchLower = search.toLowerCase();
       result = result.filter(m => 
-        m.question.toLowerCase().includes(search.toLowerCase()) ||
-        m.tags.some(t => t.toLowerCase().includes(search.toLowerCase()))
+        (m.question?.toLowerCase() || '').includes(searchLower) ||
+        (m.category?.toLowerCase() || '').includes(searchLower) ||
+        (m.tags || []).some(t => t.toLowerCase().includes(searchLower)) ||
+        (m.description?.toLowerCase() || '').includes(searchLower)
       );
     }
     return result;
@@ -463,35 +698,104 @@ const HomePage = ({ markets, search }: { markets: Market[], search: string }) =>
     <div className="max-w-7xl mx-auto px-4 md:px-8 py-8">
       <PriceTicker />
 
-      <div className="flex flex-col lg:flex-row gap-8">
-        <div className="flex-1 space-y-8">
-          {/* Hero Section */}
-          <section className="market-card p-8 flex flex-col md:flex-row items-center gap-8 bg-gradient-to-br from-market-card to-market-bg border-market-green/20">
-            <div className="flex-1 space-y-4">
-              <div className="flex gap-2">
-                <span className="market-badge bg-market-green text-market-bg">DESTAQUE</span>
-                <span className="market-badge bg-market-card-lighter text-market-text-muted">Economia</span>
-              </div>
-              <h1 className="text-2xl md:text-3xl font-bold text-white leading-tight">
-                O Kwanza vai valorizar este mês?
-              </h1>
-              <p className="text-market-text-muted text-sm max-w-md">
-                Resolve SIM se o Kwanza valorizar face ao USD até ao final do mês.
-              </p>
-              <div className="flex items-center gap-4">
-                <div className="text-4xl font-bold text-white">100%</div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-market-text-muted uppercase tracking-wider">probabilidade</span>
-                  <span className="text-xs text-market-green font-bold">↗ +2.3% hoje</span>
+      {/* Sub-tabs */}
+      <div className="flex items-center gap-6 overflow-x-auto pb-4 mb-8 no-scrollbar border-b border-market-border">
+        {subTabs.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => onCategoryChange(tab)}
+            className={cn(
+              "whitespace-nowrap text-sm font-bold transition-all relative pb-4",
+              activeCategory === tab ? "text-white" : "text-market-text-muted hover:text-white"
+            )}
+          >
+            {tab}
+            {activeCategory === tab && (
+              <motion.div
+                layoutId="activeSubTab"
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-market-green"
+              />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* News Section */}
+      {posts.length > 0 && (
+        <section className="mb-12 space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+              <Newspaper className="w-6 h-6 text-market-green" />
+              Notícias do Mercado
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {posts.slice(0, 3).map(post => (
+              <div key={post.id} className="market-card group overflow-hidden cursor-pointer border-market-green/10 hover:border-market-green/30 transition-all">
+                <div className="relative h-48 overflow-hidden">
+                  <img 
+                    src={post.image_url} 
+                    alt={post.title} 
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute top-4 left-4">
+                    <span className="market-badge bg-market-bg/80 backdrop-blur-md text-white border-market-border">
+                      {post.category}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-6 space-y-3">
+                  <h3 className="text-lg font-bold text-white group-hover:text-market-green transition-colors line-clamp-2">
+                    {post.title}
+                  </h3>
+                  <p className="text-sm text-market-text-muted line-clamp-3">
+                    {post.content}
+                  </p>
+                  <div className="pt-4 flex items-center justify-between text-[10px] text-market-text-muted font-bold uppercase tracking-widest border-t border-market-border">
+                    <span>{new Date(post.created_at).toLocaleDateString('pt-AO')}</span>
+                    <span className="text-market-green group-hover:underline">Ler mais</span>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="flex flex-col gap-3 w-full md:w-64">
-              <button className="market-button-primary w-full py-3">Sim 2 000 KZ</button>
-              <button className="market-button-red w-full py-3">Não 0 KZ</button>
-              <div className="text-center text-[10px] text-market-text-muted font-bold uppercase tracking-widest">Vol: 2K KZ</div>
-            </div>
-          </section>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="flex flex-col lg:flex-row gap-8">
+        <Sidebar activeCategory={activeCategory} onCategoryChange={onCategoryChange} categories={categories} markets={markets} />
+        
+        <div className="flex-1 space-y-8">
+          {/* Hero Section */}
+          {markets.length > 0 && (
+            <section className="market-card p-8 flex flex-col md:flex-row items-center gap-8 bg-gradient-to-br from-market-card to-market-bg border-market-green/20">
+              <div className="flex-1 space-y-4">
+                <div className="flex gap-2">
+                  <span className="market-badge bg-market-green text-market-bg">DESTAQUE</span>
+                  <span className="market-badge bg-market-card-lighter text-market-text-muted">{markets[0].category}</span>
+                </div>
+                <h1 className="text-2xl md:text-3xl font-bold text-white leading-tight">
+                  {markets[0].question}
+                </h1>
+                <p className="text-market-text-muted text-sm max-w-md">
+                  {markets[0].description || `Resolve SIM se ${markets[0].question.toLowerCase().replace('?', '')} até ao final do prazo.`}
+                </p>
+                <div className="flex items-center gap-4">
+                  <div className="text-4xl font-bold text-white">{Math.round(markets[0].yes_price * 100)}%</div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold text-market-text-muted uppercase tracking-wider">probabilidade</span>
+                    <span className="text-xs text-market-green font-bold">↗ +2.3% hoje</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3 w-full md:w-64">
+                <Link to={`/market/${markets[0].id}`} className="market-button-primary w-full py-3 text-center">Sim {Math.round(markets[0].yes_price * 1000)} KZ</Link>
+                <Link to={`/market/${markets[0].id}`} className="market-button-red w-full py-3 text-center">Não {Math.round(markets[0].no_price * 1000)} KZ</Link>
+                <div className="text-center text-[10px] text-market-text-muted font-bold uppercase tracking-widest">Vol: {markets[0].volume.toLocaleString()} KZ</div>
+              </div>
+            </section>
+          )}
 
           {/* Markets Grid */}
           <section>
@@ -511,6 +815,21 @@ const HomePage = ({ markets, search }: { markets: Market[], search: string }) =>
               {filteredMarkets.map(market => (
                 <MarketCard key={market.id} market={market} />
               ))}
+              {filteredMarkets.length === 0 && (
+                <div className="col-span-full py-20 text-center space-y-4">
+                  <div className="w-20 h-20 bg-market-card-lighter rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Search className="w-10 h-10 text-market-text-muted" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Nenhum mercado encontrado</h3>
+                  <p className="text-market-text-muted">Tente ajustar sua pesquisa ou filtros para encontrar o que procura.</p>
+                  <button 
+                    onClick={() => { onSearchChange(''); onCategoryChange('Todos'); }}
+                    className="market-button-primary px-8 py-3"
+                  >
+                    Limpar Filtros
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="mt-12 flex justify-center">
@@ -550,24 +869,19 @@ const HomePage = ({ markets, search }: { markets: Market[], search: string }) =>
               <Flame className="w-4 h-4 text-orange-500" /> Tópicos Quentes
             </h4>
             <div className="space-y-4">
-              {[
-                { id: 1, name: 'O Kwanza vai valorizar este mês?', vol: '2.5M KZ', change: '+5.2%' },
-                { id: 2, name: 'Dólar ultrapassa 950 KZ?', vol: '1.2M KZ', change: '-1.5%' },
-                { id: 3, name: 'Euro ultrapassa 1050 KZ?', vol: '850K KZ', change: '+0.8%' },
-                { id: 4, name: 'Preço da Gasolina sobe em 2024?', vol: '500K KZ', change: '+12.4%' },
-              ].map((topic, index) => (
-                <div key={topic.id} className="flex items-center gap-3 group cursor-pointer">
+              {markets.slice(0, 4).map((m, index) => (
+                <Link key={m.id} to={`/market/${m.id}`} className="flex items-center gap-3 group cursor-pointer">
                   <div className="w-6 h-6 bg-market-card-lighter rounded flex items-center justify-center text-[10px] font-bold text-market-text-muted group-hover:bg-market-green group-hover:text-market-bg transition-colors">
                     {index + 1}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-white truncate group-hover:text-market-green transition-colors">{topic.name}</p>
+                    <p className="text-xs font-bold text-white truncate group-hover:text-market-green transition-colors">{m.question}</p>
                   </div>
                   <div className="text-right">
-                    <div className="text-[10px] font-bold text-market-text-muted">{topic.vol}</div>
-                    <div className={cn("text-[8px] font-bold", topic.change.includes('+') ? 'text-market-green' : 'text-market-red')}>{topic.change}</div>
+                    <div className="text-[10px] font-bold text-market-text-muted">{m.volume.toLocaleString()} KZ</div>
+                    <div className="text-[8px] font-bold text-market-green">↗ {Math.round(m.yes_price * 100)}%</div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </div>
@@ -577,51 +891,67 @@ const HomePage = ({ markets, search }: { markets: Market[], search: string }) =>
               <History className="w-4 h-4 text-market-green" /> Atividade ao Vivo
             </h4>
             <div className="space-y-4">
-               {[
-                { id: 1, user: '0x12...34', action: 'Comprou Sim', amount: '50K KZ', time: 'agora' },
-                { id: 2, user: '0xab...cd', action: 'Vendeu Não', amount: '12K KZ', time: '1m' },
-                { id: 3, user: '0x99...88', action: 'Comprou Sim', amount: '200K KZ', time: '5m' },
-              ].map((act) => (
-                <div key={act.id} className="flex items-center justify-between text-[10px]">
+               {trades.slice(0, 5).map((trade) => (
+                <Link key={trade.id} to={`/market/${trade.market_id}`} className="flex items-center justify-between text-[10px] group hover:bg-market-card-lighter p-1 rounded transition-colors">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-market-green">{act.user}</span>
-                    <span className="text-market-text-muted">{act.action}</span>
+                    <span className={cn("font-bold", trade.side === 'Compra' ? "text-market-green" : "text-market-red")}>
+                      {trade.user_id?.slice(0, 4) || '0x...'}
+                    </span>
+                    <span className="text-market-text-muted">{trade.side}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-white">{act.amount}</span>
-                    <span className="text-market-text-muted">{act.time}</span>
+                    <span className="font-bold text-white group-hover:text-market-green transition-colors">{trade.amount.toLocaleString()} KZ</span>
+                    <span className="text-market-text-muted">{trade.time}</span>
                   </div>
-                </div>
+                </Link>
               ))}
+              {trades.length === 0 && (
+                <p className="text-[10px] text-market-text-muted italic text-center">Nenhuma atividade recente</p>
+              )}
             </div>
           </div>
 
-          <div className="market-card p-6 space-y-6">
-            <h4 className="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
-              <Shield className="w-4 h-4 text-market-green" /> PLATAFORMA REAL
+          <Link to="/activity" className="market-card p-6 space-y-6 block hover:border-market-green/30 transition-all group">
+            <h4 className="text-xs font-bold text-white uppercase tracking-widest flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-market-green" /> PLATAFORMA REAL
+              </div>
+              <ArrowRight className="w-3 h-3 text-market-text-muted group-hover:text-market-green transition-all" />
             </h4>
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center">
-                <div className="text-market-green font-bold text-sm">2K KZ</div>
+                <div className="text-market-green font-bold text-sm">
+                  {markets.reduce((acc, m) => acc + m.volume, 0).toLocaleString()} KZ
+                </div>
                 <div className="text-[8px] font-bold text-market-text-muted uppercase">Vol. Total</div>
               </div>
               <div className="text-center">
-                <div className="text-white font-bold text-sm">3</div>
+                <div className="text-white font-bold text-sm">{markets.length}</div>
                 <div className="text-[8px] font-bold text-market-text-muted uppercase">Mercados</div>
               </div>
               <div className="text-center">
-                <div className="text-white font-bold text-sm">2</div>
+                <div className="text-white font-bold text-sm">
+                  {new Set(trades.map(t => t.user_id)).size || 0}
+                </div>
                 <div className="text-[8px] font-bold text-market-text-muted uppercase">Traders</div>
               </div>
               <div className="text-center">
-                <div className="text-white font-bold text-sm">2</div>
+                <div className="text-white font-bold text-sm">{trades.length}</div>
                 <div className="text-[8px] font-bold text-market-text-muted uppercase">Apostas</div>
               </div>
             </div>
-            <button className="market-button-outline w-full text-[10px] flex items-center justify-center gap-2">
-              <Cpu className="w-3 h-3" /> GERIR MEUS ALGORITMOS
-            </button>
-          </div>
+            <div className="pt-2">
+              <div className="w-full bg-market-card-lighter rounded-full h-1 overflow-hidden">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: '100%' }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="h-full bg-market-green"
+                />
+              </div>
+              <p className="text-[8px] text-center text-market-text-muted font-bold uppercase tracking-widest mt-2">Sistema Operacional em Tempo Real</p>
+            </div>
+          </Link>
         </aside>
       </div>
     </div>
@@ -629,16 +959,17 @@ const HomePage = ({ markets, search }: { markets: Market[], search: string }) =>
 };
 
 const OrderBook = ({ market }: { market: Market }) => {
-  const bids = [
-    { price: market.yesPrice - 0.01, size: 120000 },
-    { price: market.yesPrice - 0.02, size: 450000 },
-    { price: market.yesPrice - 0.03, size: 890000 },
-  ];
-  const asks = [
-    { price: market.yesPrice + 0.01, size: 230000 },
-    { price: market.yesPrice + 0.02, size: 150000 },
-    { price: market.yesPrice + 0.03, size: 670000 },
-  ];
+  const bids = useMemo(() => [
+    { price: market.yes_price * 0.99, size: market.volume * 0.15 },
+    { price: market.yes_price * 0.98, size: market.volume * 0.25 },
+    { price: market.yes_price * 0.97, size: market.volume * 0.45 },
+  ], [market.yes_price, market.volume]);
+
+  const asks = useMemo(() => [
+    { price: market.yes_price * 1.01, size: market.volume * 0.12 },
+    { price: market.yes_price * 1.02, size: market.volume * 0.22 },
+    { price: market.yes_price * 1.03, size: market.volume * 0.35 },
+  ], [market.yes_price, market.volume]);
 
   return (
     <div className="market-card overflow-hidden">
@@ -656,7 +987,7 @@ const OrderBook = ({ market }: { market: Market }) => {
           ))}
         </div>
         <div className="py-2 border-y border-market-border text-center">
-          <span className="text-lg font-bold text-white">{Math.round(market.yesPrice * 1000)} KZ</span>
+          <span className="text-lg font-bold text-white">{Math.round(market.yes_price * 1000)} KZ</span>
           <span className="text-[10px] text-market-text-muted ml-2 font-bold uppercase">Último Preço</span>
         </div>
         <div className="space-y-1">
@@ -709,21 +1040,77 @@ const MarketDetailPage = ({ markets, user, onTrade, trades }: { markets: Market[
   const [limitPrice, setLimitPrice] = useState<string>('');
   const [isBuying, setIsBuying] = useState(true);
   const [orderType, setOrderType] = useState<'Market' | 'Limit'>('Market');
-  const [comments, setComments] = useState([
-    { id: 1, user: 'AlphaTrader', text: 'This seems like a no-brainer. The data supports it.', time: '1h ago', likes: 12 },
-    { id: 2, user: 'CryptoWhale', text: 'I am not so sure. Market is overreacting.', time: '45m ago', likes: 5 },
-    { id: 3, user: 'PredictorPro', text: 'Volume is picking up. Watch the resistance.', time: '10m ago', likes: 8 },
-  ]);
+  const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
+  const [priceHistory, setPriceHistory] = useState<PriceHistory[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
   
-  // Simulated chart data
+  useEffect(() => {
+    if (!market) return;
+
+    const fetchMarketData = async () => {
+      setLoadingHistory(true);
+      try {
+        // Fetch comments
+        const { data: commentsData } = await supabase
+          .from('comments')
+          .select('*')
+          .eq('market_id', market.id)
+          .order('timestamp', { ascending: false });
+        
+        if (commentsData) setComments(commentsData);
+
+        // Fetch price history
+        const { data: historyData } = await supabase
+          .from('price_history')
+          .select('*')
+          .eq('market_id', market.id)
+          .order('timestamp', { ascending: true });
+        
+        if (historyData) setPriceHistory(historyData);
+      } catch (error) {
+        console.error('Error fetching market detail data:', error);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+
+    fetchMarketData();
+
+    // Subscriptions
+    const commentsSub = supabase
+      .channel(`comments-${market.id}`)
+      .on('postgres_changes', { event: 'INSERT', table: 'comments', schema: 'public', filter: `market_id=eq.${market.id}` }, (payload) => {
+        setComments(prev => [payload.new, ...prev]);
+      })
+      .subscribe();
+
+    const historySub = supabase
+      .channel(`history-${market.id}`)
+      .on('postgres_changes', { event: 'INSERT', table: 'price_history', schema: 'public', filter: `market_id=eq.${market.id}` }, (payload) => {
+        setPriceHistory(prev => [...prev, payload.new as PriceHistory]);
+      })
+      .subscribe();
+
+    return () => {
+      commentsSub.unsubscribe();
+      historySub.unsubscribe();
+    };
+  }, [market?.id]);
+
+  // Use real price history or fallback to simulated if empty
   const chartData = useMemo(() => {
     if (!market) return [];
+    if (priceHistory.length > 0) {
+      return priceHistory.map((h, i) => ({ time: i, price: h.yes_price }));
+    }
+    
+    // Fallback simulated chart data
     if (market.resolved) {
-      return Array(20).fill(0).map((_, i) => ({ time: i, price: market.resolutionOutcome === 'Yes' ? 1 : 0 }));
+      return Array(20).fill(0).map((_, i) => ({ time: i, price: market.resolution_outcome === 'Yes' ? 1 : 0 }));
     }
     const data = [];
-    let currentPrice = market.yesPrice;
+    let currentPrice = market.yes_price;
     for (let i = 0; i < 20; i++) {
       data.push({
         time: i,
@@ -731,33 +1118,63 @@ const MarketDetailPage = ({ markets, user, onTrade, trades }: { markets: Market[
       });
       currentPrice = data[data.length - 1].price;
     }
-    data.push({ time: 20, price: market.yesPrice });
+    data.push({ time: 20, price: market.yes_price });
     return data;
-  }, [market?.id]);
+  }, [market?.id, priceHistory]);
 
   if (!market) return <div className="p-20 text-center">Market not found</div>;
 
-  const currentPrice = outcome === 'Yes' ? market.yesPrice : market.noPrice;
-  const executionPrice = orderType === 'Limit' && limitPrice ? parseFloat(limitPrice) / 1000 : currentPrice;
-  
+  const currentPrice = market.is_multi 
+    ? (market.outcomes?.find(o => o.name === outcome)?.price || 0)
+    : (outcome === 'Yes' ? market.yes_price : market.no_price);
   const amountValue = parseFloat(amount) || 0;
   const fee = amountValue * 0.01;
   const investmentReal = amountValue - fee;
+  
+  // Advanced calculation for price after trade
+  let newPrice = 0;
+  if (market.is_multi) {
+    const selectedOutcome = market.outcomes?.find(o => o.name === outcome);
+    if (selectedOutcome) {
+      const totalPool = market.outcomes?.reduce((sum, o) => sum + o.pool, 0) || 0;
+      const newOutcomePool = selectedOutcome.pool + investmentReal;
+      const newTotalPool = totalPool + investmentReal;
+      newPrice = newOutcomePool / newTotalPool;
+    }
+  } else {
+    const currentPoolYes = market.pool_yes;
+    const currentPoolNo = market.pool_no;
+    const newPoolYes = outcome === 'Yes' ? currentPoolYes + investmentReal : currentPoolYes;
+    const newPoolNo = outcome === 'No' ? currentPoolNo + investmentReal : currentPoolNo;
+    newPrice = outcome === 'Yes' ? newPoolYes / (newPoolYes + newPoolNo) : newPoolNo / (newPoolYes + newPoolNo);
+  }
+  
+  const executionPrice = orderType === 'Limit' && limitPrice ? parseFloat(limitPrice) / 1000 : newPrice;
   const shares = investmentReal / executionPrice;
   const potentialReturn = shares * 1000; // 1 share = 1000 KZ payout
   const profit = potentialReturn - amountValue;
   const roi = amountValue > 0 ? (profit / amountValue) * 100 : 0;
 
-  const handleAddComment = () => {
-    if (!newComment.trim()) return;
-    setComments([{
-      id: Date.now(),
-      user: 'You',
-      text: newComment,
-      time: 'Just now',
-      likes: 0
-    }, ...comments]);
-    setNewComment('');
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !user) return;
+    
+    try {
+      const { error } = await supabase
+        .from('comments')
+        .insert([{
+          market_id: market.id,
+          user_id: user.id,
+          user_name: user.name,
+          text: newComment,
+          timestamp: new Date().toISOString(),
+          likes: 0
+        }]);
+      
+      if (error) throw error;
+      setNewComment('');
+    } catch (error) {
+      console.error('Error adding comment:', error);
+    }
   };
 
   return (
@@ -766,12 +1183,12 @@ const MarketDetailPage = ({ markets, user, onTrade, trades }: { markets: Market[
         {/* Left Column: Info & Chart */}
         <div className="flex-1 space-y-6">
           <div className="flex items-start gap-6">
-            <img src={market.imageUrl} alt="" className="w-20 h-20 rounded-2xl object-cover border border-market-border" referrerPolicy="no-referrer" />
+            <img src={market.image_url} alt="" className="w-20 h-20 rounded-2xl object-cover border border-market-border" referrerPolicy="no-referrer" />
             <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <span className="text-[10px] font-bold text-market-green uppercase tracking-widest">{market.category}</span>
                 <span className="text-market-border">•</span>
-                <span className="text-[10px] font-bold text-market-text-muted uppercase tracking-widest">Termina em {format(new Date(market.endDate), 'dd MMM, yyyy')}</span>
+                <CountdownTimer endDate={market.end_date} />
               </div>
               <h1 className="text-2xl md:text-4xl font-bold leading-tight text-white">{market.question}</h1>
             </div>
@@ -779,15 +1196,26 @@ const MarketDetailPage = ({ markets, user, onTrade, trades }: { markets: Market[
           
           <div className="market-card p-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 mb-12">
-              <div className="flex items-center gap-12">
-                <div>
-                  <div className="text-[10px] text-market-text-muted font-bold uppercase tracking-widest mb-2">Preço Sim</div>
-                  <div className="text-4xl font-bold text-market-green">{Math.round(market.yesPrice * 1000)} KZ</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-market-text-muted font-bold uppercase tracking-widest mb-2">Preço Não</div>
-                  <div className="text-4xl font-bold text-market-red">{Math.round(market.noPrice * 1000)} KZ</div>
-                </div>
+              <div className="flex flex-wrap items-center gap-12">
+                {market.is_multi ? (
+                  market.outcomes?.map(o => (
+                    <div key={o.id}>
+                      <div className="text-[10px] text-market-text-muted font-bold uppercase tracking-widest mb-2">{o.name}</div>
+                      <div className="text-2xl font-bold text-market-green">{Math.round(o.price * 1000)} KZ</div>
+                    </div>
+                  ))
+                ) : (
+                  <>
+                    <div>
+                      <div className="text-[10px] text-market-text-muted font-bold uppercase tracking-widest mb-2">Preço Sim</div>
+                      <div className="text-4xl font-bold text-market-green">{Math.round(market.yes_price * 1000)} KZ</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-market-text-muted font-bold uppercase tracking-widest mb-2">Preço Não</div>
+                      <div className="text-4xl font-bold text-market-red">{Math.round(market.no_price * 1000)} KZ</div>
+                    </div>
+                  </>
+                )}
                 <div className="hidden xl:block border-l border-market-border pl-12">
                   <div className="text-[10px] text-market-text-muted font-bold uppercase tracking-widest mb-2">Liquidez</div>
                   <div className="text-2xl font-bold text-white">{market.volume.toLocaleString()} KZ</div>
@@ -897,8 +1325,10 @@ const MarketDetailPage = ({ markets, user, onTrade, trades }: { markets: Market[
                     </div>
                     <div className="flex-1 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-white">{comment.user}</span>
-                        <span className="text-[10px] text-market-text-muted font-bold uppercase tracking-widest">{comment.time}</span>
+                        <span className="font-bold text-white">{comment.userName || comment.user}</span>
+                        <span className="text-[10px] text-market-text-muted font-bold uppercase tracking-widest">
+                          {comment.timestamp ? formatDistanceToNow(new Date(comment.timestamp), { addSuffix: true }) : comment.time}
+                        </span>
                       </div>
                       <p className="text-sm text-market-text-muted leading-relaxed">{comment.text}</p>
                       <div className="flex items-center gap-6 pt-2">
@@ -918,7 +1348,7 @@ const MarketDetailPage = ({ markets, user, onTrade, trades }: { markets: Market[
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <OrderBook market={market} />
-            <RecentTrades trades={trades.filter(t => t.marketId === market.id).slice(0, 10)} />
+            <RecentTrades trades={trades.filter(t => t.market_id === market.id).slice(0, 10)} />
           </div>
         </div>
         
@@ -957,29 +1387,49 @@ const MarketDetailPage = ({ markets, user, onTrade, trades }: { markets: Market[
               </div>
               
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <button 
-                    onClick={() => setOutcome('Yes')}
-                    className={cn(
-                      "py-4 rounded-xl border-2 font-bold transition-all uppercase tracking-widest text-xs",
-                      outcome === 'Yes' 
-                        ? "border-market-green bg-market-green text-market-bg shadow-lg shadow-market-green/20" 
-                        : "border-market-border bg-market-card-lighter text-market-text-muted hover:border-market-green"
-                    )}
-                  >
-                    Sim {Math.round(market.yesPrice * 1000)} KZ
-                  </button>
-                  <button 
-                    onClick={() => setOutcome('No')}
-                    className={cn(
-                      "py-4 rounded-xl border-2 font-bold transition-all uppercase tracking-widest text-xs",
-                      outcome === 'No' 
-                        ? "border-market-red bg-market-red text-white shadow-lg shadow-market-red/20" 
-                        : "border-market-border bg-market-card-lighter text-market-text-muted hover:border-market-red"
-                    )}
-                  >
-                    Não {Math.round(market.noPrice * 1000)} KZ
-                  </button>
+                <div className={cn("grid gap-4", market.is_multi ? "grid-cols-1" : "grid-cols-2")}>
+                  {market.is_multi ? (
+                    market.outcomes?.map(o => (
+                      <button 
+                        key={o.id}
+                        onClick={() => setOutcome(o.name)}
+                        className={cn(
+                          "py-4 px-6 rounded-xl border-2 font-bold transition-all uppercase tracking-widest text-xs flex justify-between items-center",
+                          outcome === o.name 
+                            ? "border-market-green bg-market-green text-market-bg shadow-lg shadow-market-green/20" 
+                            : "border-market-border bg-market-card-lighter text-market-text-muted hover:border-market-green"
+                        )}
+                      >
+                        <span>{o.name}</span>
+                        <span>{Math.round(o.price * 1000)} KZ</span>
+                      </button>
+                    ))
+                  ) : (
+                    <>
+                      <button 
+                        onClick={() => setOutcome('Yes')}
+                        className={cn(
+                          "py-4 rounded-xl border-2 font-bold transition-all uppercase tracking-widest text-xs",
+                          outcome === 'Yes' 
+                            ? "border-market-green bg-market-green text-market-bg shadow-lg shadow-market-green/20" 
+                            : "border-market-border bg-market-card-lighter text-market-text-muted hover:border-market-green"
+                        )}
+                      >
+                        Sim {Math.round(market.yes_price * 1000)} KZ
+                      </button>
+                      <button 
+                        onClick={() => setOutcome('No')}
+                        className={cn(
+                          "py-4 rounded-xl border-2 font-bold transition-all uppercase tracking-widest text-xs",
+                          outcome === 'No' 
+                            ? "border-market-red bg-market-red text-white shadow-lg shadow-market-red/20" 
+                            : "border-market-border bg-market-card-lighter text-market-text-muted hover:border-market-red"
+                        )}
+                      >
+                        Não {Math.round(market.no_price * 1000)} KZ
+                      </button>
+                    </>
+                  )}
                 </div>
                 
                 {orderType === 'Limit' && (
@@ -1020,39 +1470,42 @@ const MarketDetailPage = ({ markets, user, onTrade, trades }: { markets: Market[
                 
                 <div className="bg-market-card-lighter rounded-xl p-6 space-y-4 border border-market-border">
                   <div className="flex justify-between text-xs font-medium">
-                    <span className="text-market-text-muted">Preço Médio</span>
-                    <span className="font-bold text-white">{Math.round(executionPrice * 1000)} KZ</span>
+                    <span className="text-market-text-muted">Valor Apostado</span>
+                    <span className="font-bold text-white">{amountValue.toLocaleString()} KZ</span>
                   </div>
                   <div className="flex justify-between text-xs font-medium">
                     <span className="text-market-text-muted">Taxa (1%)</span>
-                    <span className="font-bold text-market-red">{fee.toFixed(2)} KZ</span>
+                    <span className="font-bold text-market-red">-{fee.toFixed(2)} KZ</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-medium border-t border-market-border pt-4">
+                    <span className="text-market-text-muted">Valor no Mercado</span>
+                    <span className="font-bold text-market-green">{investmentReal.toLocaleString()} KZ</span>
                   </div>
                   <div className="flex justify-between text-xs font-medium">
-                    <span className="text-market-text-muted">Ações Estimadas</span>
-                    <span className="font-bold text-white">{isNaN(shares) ? '0.00' : shares.toFixed(2)}</span>
+                    <span className="text-market-text-muted">Preço após aposta</span>
+                    <span className="font-bold text-white">{Math.round(newPrice * 1000)} KZ</span>
                   </div>
-                  <div className="flex justify-between text-xs font-medium pt-2 border-t border-market-border">
-                    <span className="text-market-text-muted">Retorno Potencial</span>
-                    <div className="text-right">
-                      <div className="font-bold text-market-green">
-                        {potentialReturn.toLocaleString(undefined, { maximumFractionDigits: 2 })} KZ
-                      </div>
-                      <div className="text-[10px] text-market-text-muted font-bold">
-                        ({roi.toFixed(2)}%)
-                      </div>
-                    </div>
+                  <div className="flex justify-between text-xs font-medium border-t border-market-border pt-4">
+                    <span className="text-market-text-muted">Recebimento Possível</span>
+                    <span className="font-bold text-market-green">{potentialReturn.toLocaleString(undefined, { maximumFractionDigits: 0 })} KZ</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-medium">
+                    <span className="text-market-text-muted">ROI Estimado</span>
+                    <span className={cn("font-bold", roi >= 0 ? "text-market-green" : "text-market-red")}>
+                      {roi.toFixed(1)}%
+                    </span>
                   </div>
                 </div>
                 
                 <button 
-                  onClick={() => onTrade({ marketId: market.id, outcome, amount: parseFloat(amount), side: isBuying ? 'Buy' : 'Sell', type: orderType, price: executionPrice })}
+                  onClick={() => onTrade({ market_id: market.id, outcome, amount: parseFloat(amount), side: isBuying ? 'Buy' : 'Sell', type: orderType, price: executionPrice })}
                   disabled={market.resolved || (orderType === 'Limit' && !limitPrice)}
                   className={cn(
                     "w-full py-5 rounded-xl font-bold text-lg transition-all uppercase tracking-widest shadow-xl disabled:opacity-50 disabled:cursor-not-allowed",
-                    outcome === 'Yes' ? "bg-market-green text-market-bg hover:bg-market-green/90" : "bg-market-red text-white hover:bg-market-red/90"
+                    !isBuying ? "bg-market-red text-white hover:bg-market-red/90" : "bg-market-green text-market-bg hover:bg-market-green/90"
                   )}
                 >
-                  {market.resolved ? 'Mercado Resolvido' : `${isBuying ? 'Comprar' : 'Vender'} ${outcome === 'Yes' ? 'Sim' : 'Não'} (${orderType === 'Market' ? 'Mercado' : 'Limite'})`}
+                  {market.resolved ? 'Mercado Resolvido' : `${isBuying ? 'Comprar' : 'Vender'} ${outcome} (${orderType === 'Market' ? 'Mercado' : 'Limite'})`}
                 </button>
               </div>
             </div>
@@ -1064,16 +1517,32 @@ const MarketDetailPage = ({ markets, user, onTrade, trades }: { markets: Market[
 };
 
 const LeaderboardPage = () => {
-  const leaders = [
-    { rank: 1, user: 'AlphaTrader', profit: 12540000, winRate: 68, trades: 1240 },
-    { rank: 2, user: 'PredictorPro', profit: 8920000, winRate: 62, trades: 850 },
-    { rank: 3, user: 'CryptoWhale', profit: 7560000, winRate: 58, trades: 2100 },
-    { rank: 4, user: 'MarketMaker', profit: 6210000, winRate: 71, trades: 4500 },
-    { rank: 5, user: 'FortuneTeller', profit: 4530000, winRate: 55, trades: 620 },
-    { rank: 6, user: 'DataDriven', profit: 3890000, winRate: 64, trades: 940 },
-    { rank: 7, user: 'RiskTaker', profit: 3210000, winRate: 49, trades: 1500 },
-    { rank: 8, user: 'SteadyGainz', profit: 2840000, winRate: 75, trades: 320 },
-  ];
+  const [leaders, setLeaders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchLeaders = async () => {
+      const { data, error } = await supabase.from('users').select('*').order('balance', { ascending: false }).limit(10);
+      if (!error && data) {
+        // Fetch trade counts for these users
+        const leadersWithTrades = await Promise.all(data.map(async (u, i) => {
+          const { count } = await supabase.from('trades').select('*', { count: 'exact', head: true }).eq('user_id', u.id);
+          return {
+            rank: i + 1,
+            user: u.name || u.email?.split('@')[0] || 'Trader',
+            profit: u.balance,
+            winRate: 50 + Math.floor(Math.random() * 30), // Still mocked as win rate is complex to calc
+            trades: count || 0
+          };
+        }));
+        setLeaders(leadersWithTrades);
+      }
+      setLoading(false);
+    };
+    fetchLeaders();
+  }, []);
+
+  if (loading) return <div className="flex items-center justify-center p-20"><Loader2 className="w-8 h-8 animate-spin text-market-green" /></div>;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 py-12 px-4">
@@ -1081,10 +1550,6 @@ const LeaderboardPage = () => {
         <div>
           <h1 className="text-3xl font-bold mb-2 text-white">Classificação</h1>
           <p className="text-market-text-muted font-medium">Os melhores traders do MarketPay Angola</p>
-        </div>
-        <div className="flex items-center gap-2 bg-market-card border border-market-border rounded-lg p-1">
-          <button className="px-4 py-1.5 text-xs font-bold bg-market-green text-market-bg rounded-md shadow-sm">Todo o Tempo</button>
-          <button className="px-4 py-1.5 text-xs font-bold text-market-text-muted hover:text-white">Mensal</button>
         </div>
       </div>
 
@@ -1097,7 +1562,7 @@ const LeaderboardPage = () => {
                 <th className="market-table-header">Trader</th>
                 <th className="market-table-header text-center">Negócios</th>
                 <th className="market-table-header text-center">Taxa de Vitória</th>
-                <th className="market-table-header text-right">Lucro Total</th>
+                <th className="market-table-header text-right">Saldo Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-market-border">
@@ -1115,7 +1580,7 @@ const LeaderboardPage = () => {
                   </td>
                   <td className="market-table-cell">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-market-card-lighter flex items-center justify-center text-market-green font-bold">
+                      <div className="w-10 h-10 rounded-full bg-market-card-lighter flex items-center justify-center text-market-green font-bold uppercase">
                         {leader.user[0]}
                       </div>
                       <span className="font-bold text-white group-hover:text-market-green transition-colors">{leader.user}</span>
@@ -1131,7 +1596,7 @@ const LeaderboardPage = () => {
                     </div>
                   </td>
                   <td className="market-table-cell text-right font-bold text-market-green">
-                    +{leader.profit.toLocaleString()} KZ
+                    {leader.profit.toLocaleString()} KZ
                   </td>
                 </tr>
               ))}
@@ -1146,14 +1611,14 @@ const LeaderboardPage = () => {
 const PortfolioPage = ({ user, trades, markets }: { user: User | null, trades: any[], markets: Market[] }) => {
   const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
 
-  if (!user) return <div className="p-20 text-center text-market-text-muted font-bold">Por favor, conecte sua carteira para ver seu portfólio</div>;
+  if (!user) return <div className="p-20 text-center text-market-text-muted font-bold">Por favor, inicie sessão para ver seu portfólio</div>;
 
   const userTrades = trades; // In a real app, filter by user ID
 
   // Calculate total portfolio value
   const portfolioValue = user.positions.reduce((total, pos) => {
-    const market = markets.find(m => m.id === pos.marketId);
-    const currentPrice = pos.outcome === 'Yes' ? market?.yesPrice : market?.noPrice;
+    const market = markets.find(m => m.id === pos.market_id);
+    const currentPrice = pos.outcome === 'Yes' ? market?.yes_price : market?.no_price;
     return total + (pos.shares * (currentPrice || 0));
   }, 0);
 
@@ -1218,8 +1683,8 @@ const PortfolioPage = ({ user, trades, markets }: { user: User | null, trades: a
               </thead>
               <tbody className="divide-y divide-market-border">
                 {user.positions.length > 0 ? user.positions.map((pos, i) => {
-                  const market = markets.find(m => m.id === pos.marketId);
-                  const currentPrice = pos.outcome === 'Yes' ? market?.yesPrice : market?.noPrice;
+                  const market = markets.find(m => m.id === pos.market_id);
+                  const currentPrice = pos.outcome === 'Yes' ? market?.yes_price : market?.no_price;
                   const currentValue = pos.shares * (currentPrice || 0);
                   
                   return (
@@ -1237,7 +1702,7 @@ const PortfolioPage = ({ user, trades, markets }: { user: User | null, trades: a
                         </span>
                       </td>
                       <td className="market-table-cell text-center font-mono font-bold text-white">{pos.shares.toFixed(2)}</td>
-                      <td className="market-table-cell text-center font-mono text-market-text-muted">{Math.round(pos.avgPrice * 1000)} KZ</td>
+                      <td className="market-table-cell text-center font-mono text-market-text-muted">{Math.round(pos.avg_price * 1000)} KZ</td>
                       <td className="market-table-cell text-center font-mono font-bold text-white">{Math.round((currentPrice || 0) * 1000)} KZ</td>
                       <td className="market-table-cell text-right">
                         <div className="flex flex-col items-end">
@@ -1269,7 +1734,7 @@ const PortfolioPage = ({ user, trades, markets }: { user: User | null, trades: a
               </thead>
               <tbody className="divide-y divide-market-border">
                 {userTrades.length > 0 ? userTrades.map(trade => {
-                  const market = markets.find(m => m.id === trade.marketId);
+                  const market = markets.find(m => m.id === trade.market_id);
                   return (
                     <tr key={trade.id} className="hover:bg-market-card-lighter transition-colors">
                       <td className="market-table-cell">
@@ -1304,16 +1769,72 @@ const PortfolioPage = ({ user, trades, markets }: { user: User | null, trades: a
   );
 };
 
+const ResetPasswordPage = () => {
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      alert('Palavra-passe atualizada com sucesso!');
+      navigate('/login');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center px-4">
+      <div className="market-card w-full max-w-md p-8 space-y-6">
+        <h2 className="text-2xl font-bold text-white text-center">Nova Palavra-passe</h2>
+        <form onSubmit={handleReset} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-market-text-muted uppercase mb-2">Nova Password</label>
+            <input 
+              type="password" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="market-input w-full"
+              placeholder="••••••••"
+              required
+            />
+          </div>
+          {error && <p className="text-market-red text-xs font-bold">{error}</p>}
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full market-button-primary py-3 disabled:opacity-50"
+          >
+            {loading ? 'A atualizar...' : 'Atualizar Password'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 // --- Main App ---
 
 export default function App() {
-  const [markets, setMarkets] = useState<Market[]>(MOCK_MARKETS);
+  const [markets, setMarkets] = useState<Market[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [posts, setPosts] = useState<any[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [search, setSearch] = useState('');
-  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState('Todos');
   const [toasts, setToasts] = useState<{ id: number, message: string, type: 'success' | 'error' }[]>([]);
   const [trades, setTrades] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const addToast = (message: string, type: 'success' | 'error' = 'success') => {
     const id = Date.now();
@@ -1324,39 +1845,137 @@ export default function App() {
   };
 
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}`);
-    
-    ws.onopen = () => console.log('WebSocket Connected');
-    
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      if (data.type === 'INITIAL_MARKETS') {
-        setMarkets(data.markets);
-      } else if (data.type === 'MARKET_UPDATE') {
-        setMarkets(prev => prev.map(m => m.id === data.market.id ? data.market : m));
+    const fetchInitialData = async () => {
+      setLoading(true);
+      try {
+        // Fetch categories
+        const { data: catData } = await supabase.from('categories').select('*').order('order');
+        if (catData) setCategories(catData);
+
+        // Fetch markets
+        const { data: marketsData, error: marketsError } = await supabase
+          .from('markets')
+          .select('*')
+          .order('volume', { ascending: false });
+        
+        if (marketsError) throw marketsError;
+        if (marketsData && marketsData.length > 0) {
+          setMarkets(marketsData);
+        } else {
+          setMarkets(MOCK_MARKETS);
+        }
+
+        // Fetch posts
+        const { data: postsData } = await supabase
+          .from('posts')
+          .select('*')
+          .eq('status', 'published')
+          .order('created_at', { ascending: false });
+        
+        if (postsData) setPosts(postsData);
+
+        // Fetch recent trades
+        const { data: tradesData } = await supabase
+          .from('trades')
+          .select('*')
+          .order('timestamp', { ascending: false })
+          .limit(20);
+        
+        if (tradesData) {
+          setTrades(tradesData.map(t => ({
+            id: t.id,
+            market_id: t.market_id,
+            user_id: t.user_id,
+            side: t.side === 'Buy' ? 'Compra' : 'Venda',
+            outcome: t.outcome === 'Yes' ? 'Sim' : 'Não',
+            amount: t.amount,
+            price: t.price,
+            time: formatDistanceToNow(new Date(t.timestamp), { addSuffix: true })
+          })));
+        }
+
+        // Check active session
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('*, positions(*)')
+            .eq('id', session.user.id)
+            .single();
+          
+          if (!userError && userData) {
+            setUser(userData);
+          } else if (userError) {
+            // Create profile if it doesn't exist (OAuth)
+            const { data: newProfile, error: createError } = await supabase
+              .from('users')
+              .insert([{
+                id: session.user.id,
+                name: session.user.email?.split('@')[0] || 'Utilizador',
+                email: session.user.email,
+                balance: 1000,
+                is_admin: session.user.email?.toLowerCase() === 'evaristopaulocassoma00@gmail.com',
+                status: 'active'
+              }])
+              .select('*, positions(*)')
+              .single();
+            
+            if (!createError && newProfile) {
+              setUser(newProfile);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching initial data:', error);
+        setMarkets(MOCK_MARKETS);
+      } finally {
+        setLoading(false);
       }
     };
-    
-    setSocket(ws);
-    return () => ws.close();
+
+    fetchInitialData();
+
+    // Real-time subscriptions
+    const marketsSubscription = supabase
+      .channel('markets-all')
+      .on('postgres_changes', { event: '*', table: 'markets', schema: 'public' }, (payload) => {
+        if (payload.eventType === 'UPDATE') {
+          setMarkets(prev => prev.map(m => m.id === payload.new.id ? payload.new as Market : m));
+        } else if (payload.eventType === 'INSERT') {
+          setMarkets(prev => [payload.new as Market, ...prev]);
+        } else if (payload.eventType === 'DELETE') {
+          setMarkets(prev => prev.filter(m => m.id === payload.old.id));
+        }
+      })
+      .subscribe();
+
+    const tradesSubscription = supabase
+      .channel('trades-all')
+      .on('postgres_changes', { event: 'INSERT', table: 'trades', schema: 'public' }, (payload) => {
+        const t = payload.new;
+        setTrades(prev => [{
+          id: t.id,
+          market_id: t.market_id,
+          side: t.side === 'Buy' ? 'Compra' : 'Venda',
+          outcome: t.outcome === 'Yes' ? 'Sim' : 'Não',
+          amount: t.amount,
+          price: t.price,
+          time: 'agora'
+        }, ...prev].slice(0, 50));
+      })
+      .subscribe();
+
+    return () => {
+      marketsSubscription.unsubscribe();
+      tradesSubscription.unsubscribe();
+    };
   }, []);
 
-  const handleConnect = () => {
-    setUser({
-      id: 'user_1',
-      name: 'MarketTrader',
-      walletAddress: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
-      balance: 1250000,
-      positions: []
-    });
-    addToast("Carteira conectada com sucesso!");
-  };
+  const navigate = useNavigate();
 
-  const handleTrade = (tradeData: any) => {
+  const handleTrade = async (tradeData: any) => {
     if (!user) {
-      setIsWalletModalOpen(true);
+      navigate('/login');
       return;
     }
     
@@ -1366,98 +1985,223 @@ export default function App() {
       return;
     }
 
-    if (user.balance < amount) {
+    if (tradeData.side === 'Buy' && user.balance < amount) {
       addToast("Saldo insuficiente", "error");
       return;
     }
 
-    // AMM Logic
-    setMarkets(prevMarkets => prevMarkets.map(market => {
-      if (market.id === tradeData.marketId) {
-        const fee = amount * 0.01; // 1% fee
-        const investmentReal = amount - fee;
-        
-        let newPoolYes = market.poolYes;
-        let newPoolNo = market.poolNo;
+    if (user.status === 'blocked') {
+      addToast("A sua conta está bloqueada", "error");
+      return;
+    }
 
-        if (tradeData.outcome === 'Yes') {
-          newPoolYes += investmentReal;
-        } else {
-          newPoolNo += investmentReal;
-        }
+    if (user.blocked_markets?.includes(tradeData.market_id)) {
+      addToast("Está bloqueado de negociar neste mercado", "error");
+      return;
+    }
 
-        const newVolume = newPoolYes + newPoolNo;
-        const newYesPrice = newPoolYes / newVolume;
-        const newNoPrice = newPoolNo / newVolume;
+    try {
+      const market = markets.find(m => m.id === tradeData.market_id);
+      if (!market) throw new Error('Mercado não encontrado');
 
-        return {
-          ...market,
-          poolYes: newPoolYes,
-          poolNo: newPoolNo,
-          volume: newVolume,
-          yesPrice: newYesPrice,
-          noPrice: newNoPrice,
-        };
-      }
-      return market;
-    }));
-
-    // Optimistic balance update
-    setUser(prev => {
-      if (!prev) return null;
-      
-      // Calculate shares based on current price (simplified for UI update)
-      const market = markets.find(m => m.id === tradeData.marketId);
-      const price = tradeData.outcome === 'Yes' ? market?.yesPrice || 0.5 : market?.noPrice || 0.5;
       const fee = amount * 0.01;
       const investmentReal = amount - fee;
-      const shares = investmentReal / price;
+      
+      let newPoolYes = market.pool_yes;
+      let newPoolNo = market.pool_no;
+      let newOutcomes = market.outcomes ? [...market.outcomes] : [];
+      let shares = 0;
+      let executionPrice = 0;
 
-      const newPosition = {
-        marketId: tradeData.marketId,
-        outcome: tradeData.outcome,
-        shares: shares,
-        avgPrice: price
-      };
+      if (tradeData.side === 'Buy') {
+        if (market.is_multi) {
+          const outcomeIndex = newOutcomes.findIndex(o => o.name === tradeData.outcome);
+          if (outcomeIndex === -1) throw new Error('Opção não encontrada');
+          
+          newOutcomes[outcomeIndex].pool += investmentReal;
+          const totalPool = newOutcomes.reduce((sum, o) => sum + o.pool, 0);
+          executionPrice = newOutcomes[outcomeIndex].pool / totalPool;
+          shares = investmentReal / executionPrice;
+          
+          // Update all prices in multi-option
+          newOutcomes = newOutcomes.map(o => ({
+            ...o,
+            price: o.pool / totalPool
+          }));
+        } else {
+          if (tradeData.outcome === 'Yes') {
+            newPoolYes += investmentReal;
+            executionPrice = newPoolYes / (newPoolYes + newPoolNo);
+            shares = investmentReal / executionPrice;
+          } else {
+            newPoolNo += investmentReal;
+            executionPrice = newPoolNo / (newPoolYes + newPoolNo);
+            shares = investmentReal / executionPrice;
+          }
+        }
+      } else {
+        // Sell logic: decrease pool and calculate payout
+        const position = user.positions.find(p => p.market_id === market.id && p.outcome === tradeData.outcome);
+        if (!position || position.shares < amount) {
+          throw new Error('Ações insuficientes para vender');
+        }
+        
+        const currentPrice = market.is_multi 
+          ? (market.outcomes?.find(o => o.name === tradeData.outcome)?.price || 0)
+          : (tradeData.outcome === 'Yes' ? market.yes_price : market.no_price);
+        
+        const sellValue = amount * currentPrice;
+        
+        if (market.is_multi) {
+          const outcomeIndex = newOutcomes.findIndex(o => o.name === tradeData.outcome);
+          newOutcomes[outcomeIndex].pool = Math.max(1, newOutcomes[outcomeIndex].pool - (sellValue * 0.99));
+          const totalPool = newOutcomes.reduce((sum, o) => sum + o.pool, 0);
+          newOutcomes = newOutcomes.map(o => ({
+            ...o,
+            price: totalPool > 0 ? o.pool / totalPool : 1 / newOutcomes.length
+          }));
+        } else {
+          if (tradeData.outcome === 'Yes') {
+            newPoolYes = Math.max(1, newPoolYes - (sellValue * 0.99));
+          } else {
+            newPoolNo = Math.max(1, newPoolNo - (sellValue * 0.99));
+          }
+        }
+        
+        executionPrice = currentPrice;
+        shares = amount; // amount here is shares to sell
+      }
 
-      return { 
-        ...prev, 
-        balance: prev.balance - amount,
-        positions: [...prev.positions, newPosition]
-      };
-    });
+      const newVolume = market.is_multi 
+        ? newOutcomes.reduce((sum, o) => sum + o.pool, 0)
+        : newPoolYes + newPoolNo;
+      
+      const newYesPrice = market.is_multi ? 0 : newPoolYes / newVolume;
+      const newNoPrice = market.is_multi ? 0 : newPoolNo / newVolume;
 
-    setTrades(prev => [{
-      id: Date.now(),
-      marketId: tradeData.marketId,
-      side: tradeData.side === 'Buy' ? 'Compra' : 'Venda',
-      outcome: tradeData.outcome === 'Yes' ? 'Sim' : 'Não',
-      amount: amount,
-      price: tradeData.price,
-      time: 'agora'
-    }, ...prev]);
+      // 1. Update Market Pools in Supabase
+      const { error: marketError } = await supabase
+        .from('markets')
+        .update({
+          pool_yes: newPoolYes,
+          pool_no: newPoolNo,
+          volume: newVolume,
+          yes_price: newYesPrice,
+          no_price: newNoPrice,
+          outcomes: market.is_multi ? newOutcomes : null
+        })
+        .eq('id', market.id);
 
-    addToast(`Sucesso: Comprou ${tradeData.outcome === 'Yes' ? 'Sim' : 'Não'}!`);
+      if (marketError) throw marketError;
 
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({
-        type: 'TRADE',
-        ...tradeData,
-        userId: user.id
-      }));
+      // 2. Update User Balance
+      const balanceChange = tradeData.side === 'Buy' ? -amount : (amount * executionPrice * 0.99);
+      const { error: userError } = await supabase
+        .from('users')
+        .update({ balance: user.balance + balanceChange })
+        .eq('id', user.id);
+
+      if (userError) throw userError;
+
+      // 3. Record Trade
+      const { error: tradeError } = await supabase
+        .from('trades')
+        .insert([{
+          market_id: market.id,
+          user_id: user.id,
+          side: tradeData.side,
+          outcome: tradeData.outcome,
+          amount: tradeData.side === 'Buy' ? amount : (amount * executionPrice),
+          shares: shares,
+          price: executionPrice,
+          fee: fee,
+          timestamp: new Date().toISOString()
+        }]);
+
+      if (tradeError) throw tradeError;
+
+      // 4. Record Price History
+      await supabase
+        .from('price_history')
+        .insert([{
+          market_id: market.id,
+          yes_price: newYesPrice,
+          no_price: newNoPrice,
+          timestamp: new Date().toISOString()
+        }]);
+
+      // 5. Update/Create Position
+      if (tradeData.side === 'Buy') {
+        const existingPosition = user.positions.find(p => p.market_id === market.id && p.outcome === tradeData.outcome);
+        if (existingPosition) {
+          const totalShares = existingPosition.shares + shares;
+          const totalCost = (existingPosition.shares * existingPosition.avg_price) + (shares * executionPrice);
+          const newAvgPrice = totalCost / totalShares;
+
+          await supabase
+            .from('positions')
+            .update({ shares: totalShares, avg_price: newAvgPrice })
+            .eq('user_id', user.id)
+            .eq('market_id', market.id)
+            .eq('outcome', tradeData.outcome);
+        } else {
+          await supabase
+            .from('positions')
+            .insert([{
+              user_id: user.id,
+              market_id: market.id,
+              outcome: tradeData.outcome,
+              shares: shares,
+              avg_price: executionPrice
+            }]);
+        }
+      } else {
+        const existingPosition = user.positions.find(p => p.market_id === market.id && p.outcome === tradeData.outcome);
+        if (existingPosition) {
+          const remainingShares = existingPosition.shares - amount;
+          if (remainingShares <= 0) {
+            await supabase.from('positions').delete().eq('user_id', user.id).eq('market_id', market.id).eq('outcome', tradeData.outcome);
+          } else {
+            await supabase.from('positions').update({ shares: remainingShares }).eq('user_id', user.id).eq('market_id', market.id).eq('outcome', tradeData.outcome);
+          }
+        }
+      }
+
+      // Refresh local state
+      const { data: updatedUser } = await supabase.from('users').select('*, positions(*)').eq('id', user.id).single();
+      const { data: updatedMarkets } = await supabase.from('markets').select('*').order('volume', { ascending: false });
+      
+      if (updatedUser) setUser(updatedUser);
+      if (updatedMarkets) setMarkets(updatedMarkets);
+
+      addToast(tradeData.side === 'Buy' ? "Negócio realizado com sucesso!" : "Venda realizada com sucesso!");
+      
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'TRADE', trade: tradeData }));
+      }
+    } catch (error: any) {
+      console.error('Trade error:', error);
+      addToast(error.message || "Erro ao realizar negócio", "error");
     }
   };
 
+  if (loading && markets.length === 0) {
+    return (
+      <div className="min-h-screen bg-market-bg flex flex-col items-center justify-center gap-4">
+        <Loader2 className="w-12 h-12 text-market-green animate-spin" />
+        <p className="text-market-text-muted font-bold animate-pulse">CARREGANDO MARKETPAY...</p>
+      </div>
+    );
+  }
+
   return (
-    <Router>
-      <div className="min-h-screen flex flex-col bg-market-bg text-white">
+    <div className="min-h-screen flex flex-col bg-market-bg text-white">
         <Navbar 
           user={user} 
-          onConnect={() => setIsWalletModalOpen(true)} 
           search={search}
           onSearchChange={setSearch}
+          onOpenSearch={() => setIsSearchOpen(true)}
         />
-        <SubNavbar activeCategory="Todos" onCategoryChange={() => {}} />
         
         <div className="flex-1">
           <AnimatePresence mode="wait">
@@ -1469,11 +2213,21 @@ export default function App() {
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <HomePage markets={markets} search={search} />
+                  <HomePage 
+                    markets={markets} 
+                    search={search} 
+                    activeCategory={activeCategory}
+                    onCategoryChange={setActiveCategory}
+                    categories={categories} 
+                    posts={posts} 
+                    trades={trades}
+                    onSearchChange={setSearch}
+                  />
                 </motion.div>
               } />
               <Route path="/market/:id" element={
                 <motion.div
+                  key="market-detail"
                   initial={{ opacity: 0, scale: 0.98 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.98 }}
@@ -1484,12 +2238,13 @@ export default function App() {
               } />
               <Route path="/portfolio" element={
                 <motion.div
+                  key="portfolio"
                   initial={{ opacity: 0, x: 10 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -10 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <PortfolioPage user={user} />
+                  <PortfolioPage user={user} trades={trades} markets={markets} />
                 </motion.div>
               } />
               <Route path="/activity" element={
@@ -1499,7 +2254,7 @@ export default function App() {
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <ActivityPage />
+                  <ActivityPage trades={trades} markets={markets} />
                 </motion.div>
               } />
               <Route path="/leaderboard" element={
@@ -1532,6 +2287,16 @@ export default function App() {
                   <LoginPage onLogin={(u) => { setUser(u); addToast("Login efetuado com sucesso!"); }} />
                 </motion.div>
               } />
+              <Route path="/reset-password" element={
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <ResetPasswordPage />
+                </motion.div>
+              } />
               <Route path="/profile" element={
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -1549,18 +2314,12 @@ export default function App() {
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <AdminDashboard user={user} />
+                  <AdminDashboard user={user} markets={markets} trades={trades} />
                 </motion.div>
               } />
             </Routes>
           </AnimatePresence>
         </div>
-
-        <ConnectWalletModal 
-          isOpen={isWalletModalOpen} 
-          onClose={() => setIsWalletModalOpen(false)} 
-          onConnect={handleConnect} 
-        />
 
         {/* Toast Container */}
         <div className="fixed bottom-8 right-8 z-[110] flex flex-col gap-2">
@@ -1582,6 +2341,13 @@ export default function App() {
             ))}
           </AnimatePresence>
         </div>
+
+        <SearchModal 
+          isOpen={isSearchOpen} 
+          onClose={() => setIsSearchOpen(false)} 
+          onSearch={(val) => { setSearch(val); setActiveCategory('Todos'); }}
+          categories={categories}
+        />
         
         <footer className="bg-market-card border-t border-market-border py-16 px-4 md:px-8 mt-20">
           <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
@@ -1637,6 +2403,5 @@ export default function App() {
           </div>
         </footer>
       </div>
-    </Router>
   );
 }
