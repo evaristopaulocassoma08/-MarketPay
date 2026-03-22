@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../supabase';
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar, Legend, LineChart, Line
@@ -110,6 +110,9 @@ export const AdminDashboard = ({ user: currentUser, markets: initialMarkets, tra
     setTimeout(() => setToast(null), 3000);
   };
   const [editingMarket, setEditingMarket] = useState<Market | null>(null);
+  const [selectedMarketDetails, setSelectedMarketDetails] = useState<Market | null>(null);
+  const [marketPositions, setMarketPositions] = useState<any[]>([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
   const [editingPost, setEditingPost] = useState<any | null>(null);
   const [showCreateMarket, setShowCreateMarket] = useState(false);
   const [showCreateCategory, setShowCreateCategory] = useState(false);
@@ -229,6 +232,31 @@ export const AdminDashboard = ({ user: currentUser, markets: initialMarkets, tra
     }
   };
 
+  useEffect(() => {
+    if (selectedMarketDetails) {
+      fetchMarketPositions(selectedMarketDetails.id);
+    }
+  }, [selectedMarketDetails]);
+
+  const fetchMarketPositions = async (marketId: string) => {
+    setLoadingDetails(true);
+    try {
+      const { data, error } = await supabase
+        .from('positions')
+        .select(`
+          *,
+          profiles:user_id (name, email)
+        `)
+        .eq('market_id', marketId);
+
+      if (error) throw error;
+      setMarketPositions(data || []);
+    } catch (error) {
+      console.error('Error fetching positions:', error);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -268,6 +296,9 @@ export const AdminDashboard = ({ user: currentUser, markets: initialMarkets, tra
       setLoading(false);
     }
   };
+
+  const [volumeChartType, setVolumeChartType] = useState<'area' | 'bar' | 'line'>('area');
+  const [userGrowthChartType, setUserGrowthChartType] = useState<'line' | 'bar' | 'area'>('line');
 
   const logAdminAction = async (action: string, details: string) => {
     try {
@@ -902,6 +933,13 @@ export const AdminDashboard = ({ user: currentUser, markets: initialMarkets, tra
                         <td className="market-table-cell text-right">
                           <div className="flex items-center justify-end gap-1">
                             <button 
+                              onClick={() => setSelectedMarketDetails(m)}
+                              className="p-2 hover:bg-market-green/10 rounded-xl text-market-text-muted hover:text-market-green transition-all hover:scale-110"
+                              title="Ver Detalhes"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button 
                               onClick={() => setEditingMarket(m)}
                               className="p-2 hover:bg-market-card rounded-xl text-market-text-muted hover:text-white transition-all hover:scale-110"
                               title="Editar"
@@ -1195,40 +1233,105 @@ export const AdminDashboard = ({ user: currentUser, markets: initialMarkets, tra
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="market-card p-8">
                 <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <LineChartIcon className="w-5 h-5 text-market-green" />
-                    Volume de Negociação (7 Dias)
-                  </h3>
-                  <span className="text-[10px] font-bold text-market-green bg-market-green/10 px-3 py-1 rounded-full uppercase tracking-widest">Tempo Real</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-market-green/10 flex items-center justify-center">
+                      <BarChart3 className="w-5 h-5 text-market-green" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white">Volume de Negociação</h3>
+                      <p className="text-[10px] text-market-text-muted font-bold uppercase tracking-widest">Últimos 7 Dias</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 bg-market-card-lighter/50 p-1 rounded-xl border border-market-border">
+                    <button 
+                      onClick={() => setVolumeChartType('area')}
+                      className={cn(
+                        "p-2 rounded-lg transition-all",
+                        volumeChartType === 'area' ? "bg-market-green text-market-bg shadow-lg" : "text-market-text-muted hover:text-white"
+                      )}
+                      title="Área"
+                    >
+                      <Activity className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => setVolumeChartType('bar')}
+                      className={cn(
+                        "p-2 rounded-lg transition-all",
+                        volumeChartType === 'bar' ? "bg-market-green text-market-bg shadow-lg" : "text-market-text-muted hover:text-white"
+                      )}
+                      title="Barras"
+                    >
+                      <BarChart3 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => setVolumeChartType('line')}
+                      className={cn(
+                        "p-2 rounded-lg transition-all",
+                        volumeChartType === 'line' ? "bg-market-green text-market-bg shadow-lg" : "text-market-text-muted hover:text-white"
+                      )}
+                      title="Linha"
+                    >
+                      <LineChartIcon className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={analysisData.volumeHistory}>
-                      <defs>
-                        <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#00ff88" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#00ff88" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
-                      <XAxis dataKey="date" stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${value/1000}k`} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#1a1b1e', border: '1px solid #ffffff10', borderRadius: '12px' }}
-                        itemStyle={{ color: '#00ff88' }}
-                      />
-                      <Area type="monotone" dataKey="volume" stroke="#00ff88" strokeWidth={3} fillOpacity={1} fill="url(#colorVolume)" />
-                    </AreaChart>
+                    {volumeChartType === 'area' ? (
+                      <AreaChart data={analysisData.volumeHistory}>
+                        <defs>
+                          <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#00ff88" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#00ff88" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                        <XAxis dataKey="date" stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${value/1000}k`} />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#1a1b1e', border: '1px solid #ffffff10', borderRadius: '12px' }}
+                          itemStyle={{ color: '#00ff88' }}
+                        />
+                        <Area type="monotone" dataKey="volume" stroke="#00ff88" strokeWidth={3} fillOpacity={1} fill="url(#colorVolume)" />
+                      </AreaChart>
+                    ) : volumeChartType === 'bar' ? (
+                      <BarChart data={analysisData.volumeHistory}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                        <XAxis dataKey="date" stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${value/1000}k`} />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#1a1b1e', border: '1px solid #ffffff10', borderRadius: '12px' }}
+                          itemStyle={{ color: '#00ff88' }}
+                        />
+                        <Bar dataKey="volume" fill="#00ff88" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    ) : (
+                      <LineChart data={analysisData.volumeHistory}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                        <XAxis dataKey="date" stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${value/1000}k`} />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#1a1b1e', border: '1px solid #ffffff10', borderRadius: '12px' }}
+                          itemStyle={{ color: '#00ff88' }}
+                        />
+                        <Line type="monotone" dataKey="volume" stroke="#00ff88" strokeWidth={3} dot={{ r: 4, fill: '#00ff88' }} />
+                      </LineChart>
+                    )}
                   </ResponsiveContainer>
                 </div>
               </div>
 
               <div className="market-card p-8">
                 <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <PieChartIcon className="w-5 h-5 text-blue-400" />
-                    Distribuição por Categoria
-                  </h3>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-400/10 flex items-center justify-center">
+                      <PieChartIcon className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white">Distribuição por Categoria</h3>
+                      <p className="text-[10px] text-market-text-muted font-bold uppercase tracking-widest">Ativos Atuais</p>
+                    </div>
+                  </div>
                 </div>
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
@@ -1258,22 +1361,87 @@ export const AdminDashboard = ({ user: currentUser, markets: initialMarkets, tra
 
             <div className="market-card p-8">
               <div className="flex items-center justify-between mb-8">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Users className="w-5 h-5 text-purple-400" />
-                  Crescimento de Utilizadores
-                </h3>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-400/10 flex items-center justify-center">
+                    <Users className="w-5 h-5 text-purple-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Crescimento de Utilizadores</h3>
+                    <p className="text-[10px] text-market-text-muted font-bold uppercase tracking-widest">Total Acumulado</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 bg-market-card-lighter/50 p-1 rounded-xl border border-market-border">
+                  <button 
+                    onClick={() => setUserGrowthChartType('line')}
+                    className={cn(
+                      "p-2 rounded-lg transition-all",
+                      userGrowthChartType === 'line' ? "bg-purple-400 text-market-bg shadow-lg" : "text-market-text-muted hover:text-white"
+                    )}
+                    title="Linha"
+                  >
+                    <LineChartIcon className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => setUserGrowthChartType('bar')}
+                    className={cn(
+                      "p-2 rounded-lg transition-all",
+                      userGrowthChartType === 'bar' ? "bg-purple-400 text-market-bg shadow-lg" : "text-market-text-muted hover:text-white"
+                    )}
+                    title="Barras"
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => setUserGrowthChartType('area')}
+                    className={cn(
+                      "p-2 rounded-lg transition-all",
+                      userGrowthChartType === 'area' ? "bg-purple-400 text-market-bg shadow-lg" : "text-market-text-muted hover:text-white"
+                    )}
+                    title="Área"
+                  >
+                    <Activity className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               <div className="h-[300px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={analysisData.userGrowth}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
-                    <XAxis dataKey="date" stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#1a1b1e', border: '1px solid #ffffff10', borderRadius: '12px' }}
-                    />
-                    <Line type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4, fill: '#8b5cf6' }} activeDot={{ r: 6 }} />
-                  </LineChart>
+                  {userGrowthChartType === 'line' ? (
+                    <LineChart data={analysisData.userGrowth}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                      <XAxis dataKey="date" stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#1a1b1e', border: '1px solid #ffffff10', borderRadius: '12px' }}
+                      />
+                      <Line type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4, fill: '#8b5cf6' }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  ) : userGrowthChartType === 'bar' ? (
+                    <BarChart data={analysisData.userGrowth}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                      <XAxis dataKey="date" stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#1a1b1e', border: '1px solid #ffffff10', borderRadius: '12px' }}
+                      />
+                      <Bar dataKey="count" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  ) : (
+                    <AreaChart data={analysisData.userGrowth}>
+                      <defs>
+                        <linearGradient id="colorGrowth" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                      <XAxis dataKey="date" stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#ffffff40" fontSize={10} tickLine={false} axisLine={false} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#1a1b1e', border: '1px solid #ffffff10', borderRadius: '12px' }}
+                      />
+                      <Area type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorGrowth)" />
+                    </AreaChart>
+                  )}
                 </ResponsiveContainer>
               </div>
             </div>
@@ -1777,6 +1945,222 @@ export const AdminDashboard = ({ user: currentUser, markets: initialMarkets, tra
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Market Details Modal */}
+      <AnimatePresence>
+        {selectedMarketDetails && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedMarketDetails(null)}
+              className="absolute inset-0 bg-market-bg/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-4xl bg-market-card border border-market-border rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-market-border flex items-center justify-between bg-market-card-lighter/30">
+                <div className="flex items-center gap-4">
+                  <img src={selectedMarketDetails.image_url} alt="" className="w-12 h-12 rounded-xl object-cover border border-market-border" referrerPolicy="no-referrer" />
+                  <div>
+                    <h3 className="text-xl font-bold text-white leading-tight">{selectedMarketDetails.question}</h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] font-black text-market-green bg-market-green/10 px-2 py-0.5 rounded border border-market-green/20 uppercase tracking-widest">
+                        {selectedMarketDetails.category}
+                      </span>
+                      <span className="text-[10px] text-market-text-muted font-bold uppercase tracking-widest">
+                        ID: {selectedMarketDetails.id}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSelectedMarketDetails(null)}
+                  className="p-2 hover:bg-market-card rounded-xl text-market-text-muted hover:text-white transition-colors"
+                >
+                  <XCircle className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                {/* Liquidity Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 bg-market-card-lighter/30 rounded-2xl border border-market-border">
+                    <div className="flex items-center gap-2 text-market-text-muted mb-2">
+                      <Droplets className="w-4 h-4" />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Liquidez Total</span>
+                    </div>
+                    <div className="text-2xl font-mono font-black text-white">
+                      {selectedMarketDetails.volume.toLocaleString()} <span className="text-xs text-market-text-muted">KZ</span>
+                    </div>
+                  </div>
+                  
+                  {selectedMarketDetails.is_multi ? (
+                    selectedMarketDetails.outcomes?.slice(0, 2).map(outcome => (
+                      <div key={outcome.id} className="p-4 bg-market-card-lighter/30 rounded-2xl border border-market-border">
+                        <div className="flex items-center gap-2 text-market-text-muted mb-2">
+                          <Percent className="w-4 h-4" />
+                          <span className="text-[10px] font-black uppercase tracking-widest">Pool: {outcome.name}</span>
+                        </div>
+                        <div className="text-2xl font-mono font-black text-market-green">
+                          {outcome.pool.toLocaleString()} <span className="text-xs text-market-text-muted">KZ</span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <>
+                      <div className="p-4 bg-market-card-lighter/30 rounded-2xl border border-market-border">
+                        <div className="flex items-center gap-2 text-market-text-muted mb-2">
+                          <CheckCircle className="w-4 h-4 text-market-green" />
+                          <span className="text-[10px] font-black uppercase tracking-widest">Pool Sim</span>
+                        </div>
+                        <div className="text-2xl font-mono font-black text-market-green">
+                          {Math.round(selectedMarketDetails.volume * selectedMarketDetails.probability).toLocaleString()} <span className="text-xs text-market-text-muted">KZ</span>
+                        </div>
+                      </div>
+                      <div className="p-4 bg-market-card-lighter/30 rounded-2xl border border-market-border">
+                        <div className="flex items-center gap-2 text-market-text-muted mb-2">
+                          <XCircle className="w-4 h-4 text-market-red" />
+                          <span className="text-[10px] font-black uppercase tracking-widest">Pool Não</span>
+                        </div>
+                        <div className="text-2xl font-mono font-black text-market-red">
+                          {Math.round(selectedMarketDetails.volume * (1 - selectedMarketDetails.probability)).toLocaleString()} <span className="text-xs text-market-text-muted">KZ</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Chart Section */}
+                <div className="p-6 bg-market-card-lighter/30 rounded-2xl border border-market-border">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-market-green" />
+                      <h4 className="text-sm font-bold text-white uppercase tracking-widest">Histórico de Preços</h4>
+                    </div>
+                  </div>
+                  <div className="h-[200px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={[
+                        { time: '00:00', price: 0.5 },
+                        { time: '04:00', price: 0.55 },
+                        { time: '08:00', price: 0.48 },
+                        { time: '12:00', price: 0.62 },
+                        { time: '16:00', price: 0.58 },
+                        { time: '20:00', price: 0.65 },
+                        { time: '24:00', price: 0.70 },
+                      ]}>
+                        <defs>
+                          <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#00ff88" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#00ff88" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                        <XAxis dataKey="time" stroke="#ffffff20" fontSize={10} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#ffffff20" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v * 100)}%`} />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#0a0b0d', border: '1px solid #ffffff10', borderRadius: '12px' }}
+                          itemStyle={{ color: '#00ff88' }}
+                        />
+                        <Area type="monotone" dataKey="price" stroke="#00ff88" fillOpacity={1} fill="url(#colorPrice)" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Investors List */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-5 h-5 text-market-green" />
+                      <h4 className="text-sm font-bold text-white uppercase tracking-widest">Investidores Ativos</h4>
+                    </div>
+                    <span className="text-[10px] font-bold text-market-text-muted uppercase tracking-widest">
+                      {marketPositions.length} Posições
+                    </span>
+                  </div>
+
+                  <div className="market-card overflow-hidden border border-market-border/50">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-market-card-lighter/50">
+                            <th className="p-4 text-[10px] font-black text-market-text-muted uppercase tracking-widest">Utilizador</th>
+                            <th className="p-4 text-[10px] font-black text-market-text-muted uppercase tracking-widest">Resultado</th>
+                            <th className="p-4 text-right text-[10px] font-black text-market-text-muted uppercase tracking-widest">Quantidade</th>
+                            <th className="p-4 text-right text-[10px] font-black text-market-text-muted uppercase tracking-widest">Preço Médio</th>
+                            <th className="p-4 text-right text-[10px] font-black text-market-text-muted uppercase tracking-widest">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-market-border">
+                          {loadingDetails ? (
+                            <tr>
+                              <td colSpan={5} className="p-8 text-center">
+                                <Loader2 className="w-6 h-6 animate-spin text-market-green mx-auto" />
+                              </td>
+                            </tr>
+                          ) : marketPositions.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="p-8 text-center text-market-text-muted text-xs italic">
+                                Nenhum investimento encontrado para este mercado.
+                              </td>
+                            </tr>
+                          ) : (
+                            marketPositions.map((pos) => (
+                              <tr key={pos.id} className="hover:bg-market-card-lighter/30 transition-colors">
+                                <td className="p-4">
+                                  <div className="flex flex-col">
+                                    <span className="text-xs font-bold text-white">{pos.profiles?.name || 'Desconhecido'}</span>
+                                    <span className="text-[10px] text-market-text-muted">{pos.profiles?.email}</span>
+                                  </div>
+                                </td>
+                                <td className="p-4">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter border ${
+                                    pos.outcome === 'Yes' ? 'bg-market-green/10 text-market-green border-market-green/20' : 
+                                    pos.outcome === 'No' ? 'bg-market-red/10 text-market-red border-market-red/20' :
+                                    'bg-blue-400/10 text-blue-400 border-blue-400/20'
+                                  }`}>
+                                    {pos.outcome}
+                                  </span>
+                                </td>
+                                <td className="p-4 text-right font-mono text-xs font-bold text-white">
+                                  {pos.quantity.toLocaleString()}
+                                </td>
+                                <td className="p-4 text-right font-mono text-xs text-market-text-muted">
+                                  {Math.round(pos.avg_price * 100)}%
+                                </td>
+                                <td className="p-4 text-right font-mono text-xs font-bold text-market-green">
+                                  {Math.round(pos.quantity * pos.avg_price * 1000).toLocaleString()} KZ
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="p-6 border-t border-market-border bg-market-card-lighter/30 flex justify-end">
+                <button 
+                  onClick={() => setSelectedMarketDetails(null)}
+                  className="market-button-outline px-8 py-2.5 text-xs"
+                >
+                  Fechar
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
