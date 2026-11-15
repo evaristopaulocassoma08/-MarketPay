@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { LogIn, Mail } from 'lucide-react';
-import { supabase } from '../supabase';
+import { auth, signInWithGoogle } from '../firebase';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { firebaseService } from '../lib/firebase-service';
 
 export const LoginPage = ({ onLogin }: { onLogin: (user: User) => void }) => {
   const [email, setEmail] = useState('');
@@ -9,106 +10,43 @@ export const LoginPage = ({ onLogin }: { onLogin: (user: User) => void }) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [resetEmailSent, setResetEmailSent] = useState(false);
-
-  // Check if Supabase is properly initialized
-  const isSupabaseConfigured = !!supabase;
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isSupabaseConfigured) {
-      setError('Erro de configuração: O cliente Supabase não foi inicializado corretamente.');
-      return;
-    }
     setError('');
     setLoading(true);
 
     try {
       if (isSignUp) {
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const firebaseUser = userCredential.user;
+        
+        // Create user profile in Firestore
+        const newUser = await firebaseService.createUserProfile(firebaseUser.uid, {
+          name: email.split('@')[0],
+          email: email
         });
         
-        if (signUpError) {
-          if (signUpError.message.includes('Email confirmation')) {
-            setError('Registo efetuado! Por favor, verifique o seu email para confirmar a conta antes de entrar.');
-            setLoading(false);
-            return;
-          }
-          throw signUpError;
-        }
-        
-        if (data.user) {
-          // Create user profile in 'users' table
-          const { error: profileError } = await supabase
-            .from('users')
-            .insert([{
-              id: data.user.id,
-              name: email.split('@')[0],
-              email: email,
-              balance: 1000, // Initial bonus
-              is_admin: email.toLowerCase() === 'evaristopaulocassoma00@gmail.com',
-              status: 'active'
-            }]);
-          
-          if (profileError) {
-            console.error('Profile creation error:', profileError);
-            // Even if profile creation fails here, the auth account is created.
-            // The user might need to log in to trigger the profile creation logic in handleAuth (signIn branch)
-            setError('Conta criada, mas houve um erro ao criar o perfil. Tente fazer login.');
-          } else {
-            alert('Conta criada com sucesso!');
-            setIsSignUp(false);
-          }
-        }
+        onLogin(newUser);
       } else {
-        const { data, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (signInError) throw signInError;
-
-        if (data.user) {
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('*, positions(*)')
-            .eq('id', data.user.id)
-            .single();
-          
-          if (userError) {
-            // If profile doesn't exist (e.g. after OAuth), create it
-            const { data: newProfile, error: createError } = await supabase
-              .from('users')
-              .insert([{
-                id: data.user.id,
-                name: data.user.email?.split('@')[0] || 'Utilizador',
-                email: data.user.email,
-                balance: 1000,
-                is_admin: data.user.email?.toLowerCase() === 'evaristopaulocassoma00@gmail.com',
-                status: 'active'
-              }])
-              .select('*, positions(*)')
-              .single();
-            
-            if (createError) throw createError;
-            onLogin(newProfile);
-          } else {
-            onLogin(userData);
-          }
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const firebaseUser = userCredential.user;
+        
+        const userData = await firebaseService.getUserProfile(firebaseUser.uid);
+        if (userData) {
+          onLogin(userData);
+        } else {
+          // If profile doesn't exist, create it
+          const newUser = await firebaseService.createUserProfile(firebaseUser.uid, {
+            name: firebaseUser.displayName || email.split('@')[0],
+            email: firebaseUser.email || email
+          });
+          onLogin(newUser);
         }
       }
     } catch (err: any) {
       console.error('Auth error:', err);
-      if (err.message === 'Invalid login credentials') {
-        setError('Email ou senha incorretos.');
-      } else if (err.message.includes('Email not confirmed')) {
-        setError('Por favor, confirme o seu email antes de entrar.');
-      } else if (err.message.includes('Database error saving new user')) {
-        setError('Erro ao guardar perfil. Verifique se executou o script SQL no Supabase.');
-      } else {
-        setError(err.message || 'Ocorreu um erro na autenticação.');
-      }
+      setError(err.message || 'Ocorreu um erro na autenticação.');
     } finally {
       setLoading(false);
     }
@@ -121,11 +59,7 @@ export const LoginPage = ({ onLogin }: { onLogin: (user: User) => void }) => {
     }
     setLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
-      if (error) throw error;
-      setResetEmailSent(true);
+      await sendPasswordResetEmail(auth, email);
       alert('Email de recuperação enviado! Verifique a sua caixa de entrada.');
     } catch (err: any) {
       setError(err.message);
@@ -134,17 +68,33 @@ export const LoginPage = ({ onLogin }: { onLogin: (user: User) => void }) => {
     }
   };
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleLoginAction = async () => {
+    setLoading(true);
+    setError('');
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin
-        }
-      });
-      if (error) throw error;
+      console.log('Iniciando login com Google...');
+      const firebaseUser = await signInWithGoogle();
+      console.log('Login com Google bem-sucedido:', firebaseUser.email);
+      const userData = await firebaseService.getUserProfile(firebaseUser.uid);
+      
+      if (userData) {
+        console.log('Perfil de utilizador encontrado:', userData);
+        onLogin(userData);
+      } else {
+        console.log('Perfil de utilizador não encontrado, criando novo...');
+        const newUser = await firebaseService.createUserProfile(firebaseUser.uid, {
+          name: firebaseUser.displayName || 'Utilizador',
+          email: firebaseUser.email || '',
+          is_admin: firebaseUser.email?.toLowerCase() === 'evaristopaulocassoma00@gmail.com'
+        });
+        console.log('Novo perfil criado:', newUser);
+        onLogin(newUser);
+      }
     } catch (err: any) {
-      setError(err.message);
+      console.error('Erro no login com Google:', err);
+      setError(`Erro no Google Login: ${err.message || 'Erro desconhecido'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -197,7 +147,7 @@ export const LoginPage = ({ onLogin }: { onLogin: (user: User) => void }) => {
               required
             />
           </div>
-          {error && <p className="text-market-red text-xs font-bold">{error}</p>}
+          {error && <p className="text-market-red text-xs font-bold bg-market-red/10 p-3 rounded-lg border border-market-red/20">{error}</p>}
           {isSignUp && (
             <p className="text-[10px] text-market-text-muted italic">
               Nota: Pode ser necessário confirmar o seu email antes de conseguir entrar.
@@ -232,7 +182,7 @@ export const LoginPage = ({ onLogin }: { onLogin: (user: User) => void }) => {
           </div>
 
           <button 
-            onClick={handleGoogleLogin}
+            onClick={handleGoogleLoginAction}
             className="w-full bg-white text-black hover:bg-gray-100 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition-colors"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">

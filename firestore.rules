@@ -1,0 +1,251 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isMasterAdmin() {
+      return isAuthenticated() &&
+        request.auth.token.email == "evaristopaulocassoma00@gmail.com" &&
+        request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isMasterAdmin() || (
+        isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.is_admin == true)
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function isValidUserCreate() {
+      return (!('is_admin' in request.resource.data) || request.resource.data.is_admin == false || isMasterAdmin()) &&
+        (!('role' in request.resource.data) || !(request.resource.data.role in ['admin', 'master_admin', 'operational_admin']) || isMasterAdmin()) &&
+        (!('is_verified' in request.resource.data) || request.resource.data.is_verified == false || isMasterAdmin()) &&
+        (!('verification_status' in request.resource.data) || request.resource.data.verification_status != 'verified' || isMasterAdmin());
+    }
+
+    function isValidOwnerUserUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'balance', 'name', 'status', 'verification_status', 'wallet_address', 'positions', 'updated_at'
+        ]) &&
+        (!('status' in request.resource.data) || resource.data.status != 'blocked') &&
+        (!('verification_status' in request.resource.data) ||
+          request.resource.data.verification_status == resource.data.verification_status ||
+          request.resource.data.verification_status == 'pending');
+    }
+
+    // ===============================================================
+    // Core Application Collections (CLOB+AMM Synced & Hardened)
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(userId) && isValidId(userId) && isValidUserCreate();
+      allow update: if isAuthenticated() && (isAdmin() || (isOwner(userId) && isValidOwnerUserUpdate()));
+      allow delete: if isMasterAdmin();
+    }
+
+    match /markets/{marketId} {
+      allow read: if true;
+      allow create: if isAdmin() || (
+        isAuthenticated() &&
+        isValidId(marketId) &&
+        request.resource.data.creator_id == request.auth.uid &&
+        request.resource.data.resolved == false
+      );
+      allow delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isAuthenticated() &&
+        resource.data.resolved != true &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['yes_price', 'no_price', 'volume']) &&
+        request.resource.data.yes_price is number &&
+        request.resource.data.yes_price >= 0.01 &&
+        request.resource.data.yes_price <= 0.99 &&
+        request.resource.data.no_price is number &&
+        request.resource.data.no_price >= 0.01 &&
+        request.resource.data.no_price <= 0.99 &&
+        request.resource.data.volume is number &&
+        request.resource.data.volume >= resource.data.volume
+      );
+    }
+
+    match /trades/{tradeId} {
+      allow read: if true;
+      allow create: if isAdmin() || (
+        isAuthenticated() &&
+        isValidId(tradeId) &&
+        request.resource.data.user_id == request.auth.uid &&
+        request.resource.data.amount is number &&
+        request.resource.data.amount >= 0
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    match /positions/{positionId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.user_id == request.auth.uid ||
+        isAdmin()
+      );
+      allow create, update: if isAuthenticated() && isValidId(positionId) && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.user_id == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.user_id == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    match /ledger/{entryId} {
+      allow read: if isAuthenticated() && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidId(entryId) && (request.resource.data.user_id == request.auth.uid || isAdmin());
+      allow update, delete: if false; // Ledger entries are immutable
+    }
+
+    match /limit_orders/{orderId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.user_id == request.auth.uid || isAdmin());
+      allow create: if isAdmin(); // Limit orders run on Express CLOB engine
+      allow update: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.user_id == request.auth.uid) && request.resource.data.status == 'cancelled');
+      allow delete: if isAdmin();
+    }
+
+    match /price_history/{historyId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidId(historyId);
+      allow update, delete: if isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /posts/{postId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /comments/{commentId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidId(commentId) && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
+    }
+
+    match /settings/{settingsId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && isValidId(logId);
+      allow update, delete: if false; // Audit logs are immutable
+    }
+
+    match /finance_requests/{requestId} {
+      allow read: if isAuthenticated() && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() &&
+        isValidId(requestId) &&
+        request.resource.data.user_id == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.amount is number &&
+        request.resource.data.amount > 0;
+      allow update, delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // Enterprise AMM Collections (Segregated & Admin-Restricted)
+    // ===============================================================
+
+    match /amm_settings/{docId} {
+      allow read: if isAdmin();
+      allow write: if isMasterAdmin();
+    }
+
+    match /amm_capital_accounts/{docId} {
+      allow read: if isAdmin();
+      allow write: if isMasterAdmin();
+    }
+
+    match /amm_market_allocations/{marketId} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if isMasterAdmin();
+    }
+
+    match /amm_quotes/{quoteId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /amm_inventory/{marketId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /amm_positions/{positionId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /amm_trades/{tradeId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    match /amm_pnl/{pnlId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    match /amm_risk_limits/{limitId} {
+      allow read: if isAdmin();
+      allow write: if isMasterAdmin();
+    }
+
+    match /amm_risk_events/{eventId} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /amm_admin_approvals/{approvalId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isMasterAdmin();
+      allow delete: if false;
+    }
+
+    match /amm_decision_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

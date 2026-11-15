@@ -1,0 +1,198 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and balance",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "balance": { "type": "number", "description": "User's current balance in KZ" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email", "balance"]
+    },
+    "Market": {
+      "title": "Market",
+      "description": "Prediction market details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "question": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "resolved": { "type": "boolean" },
+        "resolutionOutcome": { "type": "string", "enum": ["Yes", "No"] },
+        "yes_price": { "type": "number", "description": "Current CLOB+AMM implied YES probability (0.01-0.99)" },
+        "no_price": { "type": "number", "description": "Current CLOB+AMM implied NO probability (0.01-0.99)" },
+        "volume": { "type": "number" },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "question", "end_date"]
+    },
+    "Trade": {
+      "title": "Trade",
+      "description": "CLOB+AMM trade execution mirrored from Express/SQLite",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "market_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "side": { "type": "string", "enum": ["Buy", "Sell"] },
+        "outcome": { "type": "string", "enum": ["Yes", "No"] },
+        "amount": { "type": "number" },
+        "shares": { "type": "number" },
+        "price": { "type": "number" },
+        "engine": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "market_id", "user_id", "side", "outcome", "amount", "shares", "price", "timestamp"]
+    },
+    "Position": {
+      "title": "Position",
+      "description": "User's position in a market synced from SQLite user_clob_positions",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "marketId": { "type": "string" },
+        "outcome": { "type": "string", "enum": ["Yes", "No"] },
+        "shares": { "type": "number" },
+        "avg_price": { "type": "number" }
+      },
+      "required": ["userId", "marketId", "outcome", "shares"]
+    },
+    "PriceHistory": {
+      "title": "PriceHistory",
+      "description": "Historical price points for a market",
+      "type": "object",
+      "properties": {
+        "market_id": { "type": "string" },
+        "yes_price": { "type": "number" },
+        "no_price": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["market_id", "yes_price", "no_price", "timestamp"]
+    },
+    "AmmSettings": {
+      "title": "AmmSettings",
+      "description": "Enterprise AMM global configuration (SANDBOX, 250k capital, 50k reserve)",
+      "type": "object",
+      "properties": {
+        "platform_mode": { "type": "string", "enum": ["SANDBOX"] },
+        "amm_enabled": { "type": "boolean" },
+        "emergency_halted": { "type": "boolean" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["platform_mode", "amm_enabled"]
+    },
+    "AmmMarketAllocation": {
+      "title": "AmmMarketAllocation",
+      "description": "Per-market capital allocation and 5% loss limit",
+      "type": "object",
+      "properties": {
+        "market_id": { "type": "string" },
+        "allocated_capital_cents": { "type": "number" },
+        "loss_limit_cents": { "type": "number" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED", "SUSPENDED"] },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["market_id", "allocated_capital_cents", "loss_limit_cents", "status"]
+    },
+    "AmmRecord": {
+      "title": "AmmRecord",
+      "description": "Enterprise AMM accounting, risk, quote, inventory, trade, approval and decision records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "market_id": { "type": "string" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/markets/{marketId}": {
+      "schema": "Market",
+      "description": "Prediction markets"
+    },
+    "/trades/{tradeId}": {
+      "schema": "Trade",
+      "description": "All trades"
+    },
+    "/positions/{positionId}": {
+      "schema": "Position",
+      "description": "User positions (ID is userId_marketId_outcome)"
+    },
+    "/price_history/{historyId}": {
+      "schema": "PriceHistory",
+      "description": "Price history points"
+    },
+    "/ledger/{entryId}": {
+      "schema": "AmmRecord",
+      "description": "Immutable user balance ledger"
+    },
+    "/finance_requests/{requestId}": {
+      "schema": "AmmRecord",
+      "description": "Deposit and withdrawal requests"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AmmRecord",
+      "description": "Immutable admin and settlement audit logs"
+    },
+    "/amm_settings/{docId}": {
+      "schema": "AmmSettings",
+      "description": "Enterprise AMM settings mirror"
+    },
+    "/amm_capital_accounts/{docId}": {
+      "schema": "AmmRecord",
+      "description": "Enterprise AMM segregated capital accounts"
+    },
+    "/amm_market_allocations/{marketId}": {
+      "schema": "AmmMarketAllocation",
+      "description": "Per-market AMM allocations and risk states"
+    },
+    "/amm_quotes/{quoteId}": {
+      "schema": "AmmRecord",
+      "description": "Active and historical AMM quotes"
+    },
+    "/amm_inventory/{marketId}": {
+      "schema": "AmmRecord",
+      "description": "AMM SIM/NO inventory per market"
+    },
+    "/amm_positions/{positionId}": {
+      "schema": "AmmRecord",
+      "description": "AMM positions per market and outcome"
+    },
+    "/amm_trades/{tradeId}": {
+      "schema": "AmmRecord",
+      "description": "AMM executed trades"
+    },
+    "/amm_pnl/{pnlId}": {
+      "schema": "AmmRecord",
+      "description": "AMM financial PnL snapshots"
+    },
+    "/amm_risk_limits/{limitId}": {
+      "schema": "AmmRecord",
+      "description": "AMM risk thresholds"
+    },
+    "/amm_risk_events/{eventId}": {
+      "schema": "AmmRecord",
+      "description": "AMM risk alerts and halts"
+    },
+    "/amm_admin_approvals/{approvalId}": {
+      "schema": "AmmRecord",
+      "description": "Master Admin approval audit records"
+    },
+    "/amm_decision_logs/{logId}": {
+      "schema": "AmmRecord",
+      "description": "Automated strategy decision logs"
+    }
+  }
+}
